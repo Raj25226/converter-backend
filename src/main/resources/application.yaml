@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: ${APP_NAME:file-converter}
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/converter}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  jpa:
+    database-platform: ${JPA_DATABASE_PLATFORM:org.hibernate.dialect.PostgreSQLDialect}
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: ${JPA_FORMAT_SQL:true}
+
+  servlet:
+    multipart:
+      max-file-size: ${MAX_FILE_SIZE:50MB}
+      max-request-size: ${MAX_REQUEST_SIZE:50MB}
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+file:
+  upload-dir: ${FILE_UPLOAD_DIR:./uploads}
+  cleanup-delay: ${FILE_CLEANUP_DELAY:1800000}
+
+jwt:
+  secret: ${JWT_SECRET:Z1Z3dHNjZkM1YVZKcTg2Z2ZpN3ZKcW1KQ2l2bVd5dE1OZkpQY1JYcXJxU29nQ1hJRW5hN0Npb1E=}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,OPTIONS}
+  allowed-headers: ${CORS_ALLOWED_HEADERS:*}
+  allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+
+security:
+  require-https: ${SECURITY_REQUIRE_HTTPS:false}
+
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.converter: ${LOG_LEVEL_APP:DEBUG}
+    org.springframework.web: ${LOG_LEVEL_SPRING_WEB:INFO}
+    org.hibernate: ${LOG_LEVEL_HIBERNATE:INFO}
+
+app:
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
+  backend:
+    url: ${BACKEND_URL:http://localhost:8080}
+    download-url: ${DOWNLOAD_URL:/api/download/}
