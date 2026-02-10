@@ -3,10 +3,10 @@ spring:
     name: ${APP_NAME:file-converter}
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5433/converter}
+    url: ${DB_URL:jdbc:postgresql://nozomi.proxy.rlwy.net:38836/railway?sslmode=require&options=-c%20TimeZone=UTC}
     driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    password: ${DB_PASSWORD:VoOhdnhXXQiUDbLuiPIaznKKYyKtMXTu}
 
   jpa:
     database-platform: ${JPA_DATABASE_PLATFORM:org.hibernate.dialect.PostgreSQLDialect}
@@ -16,6 +16,8 @@ spring:
     properties:
       hibernate:
         format_sql: ${JPA_FORMAT_SQL:true}
+        jdbc:
+          time_zone: UTC
 
   servlet:
     multipart:
