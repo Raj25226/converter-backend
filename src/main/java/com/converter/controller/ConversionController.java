@@ -49,6 +49,29 @@ public class ConversionController {
         }
     }
 
+    @PostMapping("/word-to-pdf")
+    public ResponseEntity<ConversionResponse> convertWordToPdf(@RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Converting Word to PDF: {}", file.getOriginalFilename());
+            File convertedFile = conversionService.convertWordToPdf(file);
+
+            ConversionResponse response = new ConversionResponse(
+                    convertedFile.getName(),
+                    convertedFile.getName(),
+                    downloadURL + convertedFile.getName(),
+                    convertedFile.length()
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error converting Word to PDF", e);
+            ConversionResponse errorResponse = new ConversionResponse();
+            errorResponse.setStatus("error");
+            errorResponse.setMessage("Conversion failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
     @PostMapping("/jpg-to-png")
     public ResponseEntity<ConversionResponse> convertJpgToPng(@RequestParam("file") MultipartFile file) {
         try {
@@ -65,6 +88,29 @@ public class ConversionController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error converting JPG to PNG", e);
+            ConversionResponse errorResponse = new ConversionResponse();
+            errorResponse.setStatus("error");
+            errorResponse.setMessage("Conversion failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    @PostMapping("/png-to-jpg")
+    public ResponseEntity<ConversionResponse> convertPngToJpg(@RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Converting PNG to JPG: {}", file.getOriginalFilename());
+            File convertedFile = conversionService.convertImageFormat(file, "jpg");
+
+            ConversionResponse response = new ConversionResponse(
+                    convertedFile.getName(),
+                    convertedFile.getName(),
+                    downloadURL + convertedFile.getName(),
+                    convertedFile.length()
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error converting PNG to JPG", e);
             ConversionResponse errorResponse = new ConversionResponse();
             errorResponse.setStatus("error");
             errorResponse.setMessage("Conversion failed: " + e.getMessage());
@@ -95,6 +141,29 @@ public class ConversionController {
         }
     }
 
+    @PostMapping("/pdf-to-excel")
+    public ResponseEntity<ConversionResponse> convertPdfToExcel(@RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Converting PDF to Excel: {}", file.getOriginalFilename());
+            File convertedFile = conversionService.convertPdfToExcel(file);
+
+            ConversionResponse response = new ConversionResponse(
+                    convertedFile.getName(),
+                    convertedFile.getName(),
+                    downloadURL + convertedFile.getName(),
+                    convertedFile.length()
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error converting PDF to Excel", e);
+            ConversionResponse errorResponse = new ConversionResponse();
+            errorResponse.setStatus("error");
+            errorResponse.setMessage("Conversion failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
     @PostMapping("/mp4-to-mp3")
     public ResponseEntity<ConversionResponse> convertMp4ToMp3(@RequestParam("file") MultipartFile file) {
         try {
@@ -118,4 +187,72 @@ public class ConversionController {
         }
     }
 
+    @PostMapping("/ppt-to-pdf")
+    public ResponseEntity<ConversionResponse> convertPptToPdf(@RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Converting PowerPoint to PDF: {}", file.getOriginalFilename());
+            File convertedFile = conversionService.convertPptToPdf(file);
+
+            ConversionResponse response = new ConversionResponse(
+                    convertedFile.getName(),
+                    convertedFile.getName(),
+                    downloadURL + convertedFile.getName(),
+                    convertedFile.length()
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error converting PowerPoint to PDF", e);
+            ConversionResponse errorResponse = new ConversionResponse();
+            errorResponse.setStatus("error");
+            errorResponse.setMessage("Conversion failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    @PostMapping("/heic-to-jpg")
+    public ResponseEntity<ConversionResponse> convertHeicToJpg(@RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Converting HEIC to JPG: {}", file.getOriginalFilename());
+            File convertedFile = conversionService.convertHeicToJpg(file);
+
+            ConversionResponse response = new ConversionResponse(
+                    convertedFile.getName(),
+                    convertedFile.getName(),
+                    downloadURL + convertedFile.getName(),
+                    convertedFile.length()
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error converting HEIC to JPG", e);
+            ConversionResponse errorResponse = new ConversionResponse();
+            errorResponse.setStatus("error");
+            errorResponse.setMessage("Conversion failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    @PostMapping("/webp-to-png")
+    public ResponseEntity<ConversionResponse> convertWebpToPng(@RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Converting WebP to PNG: {}", file.getOriginalFilename());
+            File convertedFile = conversionService.convertWebpToPng(file);
+
+            ConversionResponse response = new ConversionResponse(
+                    convertedFile.getName(),
+                    convertedFile.getName(),
+                    downloadURL + convertedFile.getName(),
+                    convertedFile.length()
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error converting WebP to PNG", e);
+            ConversionResponse errorResponse = new ConversionResponse();
+            errorResponse.setStatus("error");
+            errorResponse.setMessage("Conversion failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
 }

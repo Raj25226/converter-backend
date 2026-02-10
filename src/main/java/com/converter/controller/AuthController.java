@@ -2,8 +2,10 @@ package com.converter.controller;
 
 import com.converter.dto.AuthRequest;
 import com.converter.dto.AuthResponse;
+import com.converter.dto.GoogleAuthRequest;
 import com.converter.dto.RegisterRequest;
 import com.converter.service.AuthService;
+import com.converter.service.GoogleAuthService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +22,9 @@ public class AuthController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private GoogleAuthService googleAuthService;
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -39,6 +44,19 @@ public class AuthController {
         logger.info("Login request for email: {}", request.getEmail());
 
         AuthResponse response = authService.login(request);
+
+        if ("error".equals(response.getStatus())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> googleLogin(@Valid @RequestBody GoogleAuthRequest request) {
+        logger.info("Google OAuth login request");
+
+        AuthResponse response = googleAuthService.authenticateWithGoogle(request);
 
         if ("error".equals(response.getStatus())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);

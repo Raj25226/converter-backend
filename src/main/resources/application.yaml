@@ -45,6 +45,9 @@ jwt:
   secret: ${JWT_SECRET:Z1Z3dHNjZkM1YVZKcTg2Z2ZpN3ZKcW1KQ2l2bVd5dE1OZkpQY1JYcXJxU29nQ1hJRW5hN0Npb1E=}
   expiration: ${JWT_EXPIRATION:86400000}
 
+google:
+  client-id: ${GOOGLE_CLIENT_ID:}
+
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,OPTIONS}
