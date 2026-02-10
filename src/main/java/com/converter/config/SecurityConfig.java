@@ -23,6 +23,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/convert/**").permitAll()
                         .requestMatchers("/api/download/**").permitAll()
+                        .requestMatchers("/api/analytics/**").permitAll()
                         .anyRequest().authenticated()
                 );
 

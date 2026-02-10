@@ -74,6 +74,13 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Google OAuth2 -->
+		<dependency>
+			<groupId>com.google.api-client</groupId>
+			<artifactId>google-api-client</artifactId>
+			<version>2.2.0</version>
+		</dependency>
+
 		<!-- PDF -->
 		<dependency>
 			<groupId>org.apache.pdfbox</groupId>
@@ -81,7 +88,7 @@
 			<version>3.0.4</version>
 		</dependency>
 
-		<!-- Word / Excel -->
+		<!-- Word / Excel / PowerPoint -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>
