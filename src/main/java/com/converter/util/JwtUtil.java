@@ -1,81 +1,77 @@
 package com.converter.util;
 
+import com.converter.entity.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 
 @Component
+@Slf4j
 public class JwtUtil {
-
-    private static final Logger logger = LoggerFactory.getLogger(JwtUtil.class);
 
     @Value("${jwt.secret}")
     private String jwtSecret;
 
-    @Value("${jwt.expiration}")
-    private long jwtExpirationMs;
+    @Value("${jwt.expiration-days}")
+    private long expirationDays;
 
     private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+        byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateToken(String email, Long userId) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
+    public String generateToken(User user) {
+        Instant now = Instant.now();
+        Instant expiry = now.plus(expirationDays, ChronoUnit.DAYS);
 
         return Jwts.builder()
-                .subject(email)
-                .claim("userId", userId)
-                .issuedAt(now)
-                .expiration(expiryDate)
+                .subject(String.valueOf(user.getId()))
+                .claim("email", user.getEmail())
+                .claim("role", user.getRole().name())
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiry))
                 .signWith(getSigningKey(), Jwts.SIG.HS512)
                 .compact();
     }
 
-    public String getEmailFromToken(String token) {
-        Claims claims = Jwts.parser()
+    public Claims parseToken(String token) {
+        return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-
-        return claims.getSubject();
     }
 
     public Long getUserIdFromToken(String token) {
-        Claims claims = Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        return Long.parseLong(parseToken(token).getSubject());
+    }
 
-        return claims.get("userId", Long.class);
+    public String getRoleFromToken(String token) {
+        return parseToken(token).get("role", String.class);
     }
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parser()
-                    .verifyWith(getSigningKey())
-                    .build()
-                    .parseSignedClaims(token);
+            parseToken(token);
             return true;
         } catch (ExpiredJwtException e) {
-            logger.error("Expired JWT token");
+            log.debug("JWT expired");
         } catch (UnsupportedJwtException e) {
-            logger.error("Unsupported JWT token");
+            log.debug("JWT unsupported");
         } catch (MalformedJwtException e) {
-            logger.error("Invalid JWT token");
+            log.debug("JWT malformed");
         } catch (SecurityException e) {
-            logger.error("Invalid JWT signature");
+            log.debug("JWT signature invalid");
         } catch (IllegalArgumentException e) {
-            logger.error("JWT claims string is empty");
+            log.debug("JWT empty claims");
         }
         return false;
     }

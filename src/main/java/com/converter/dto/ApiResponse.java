@@ -1,40 +1,28 @@
 package com.converter.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResponse {
+
     private String status;
     private String message;
 
-    // Constructors
-    public ApiResponse() {}
-
-    public ApiResponse(String status, String message) {
-        this.status = status;
-        this.message = message;
-    }
-
-    // Static factory methods
     public static ApiResponse success(String message) {
-        return new ApiResponse("success", message);
+        return ApiResponse.builder()
+                .status("success")
+                .message(message)
+                .build();
     }
 
     public static ApiResponse error(String message) {
-        return new ApiResponse("error", message);
-    }
-
-    // Getters and Setters
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
+        return ApiResponse.builder()
+                .status("error")
+                .message(message)
+                .build();
     }
 }

@@ -1,145 +1,77 @@
 package com.converter.entity;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.hibernate.annotations.GenericGenerator;
+
+import java.time.Instant;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_users_email", columnList = "email", unique = true)
+})
+@Getter
+@Setter
+@NoArgsConstructor
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(nullable = false, updatable = false)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(nullable = false)
-    private String password;
+    @Column(name = "password_hash", length = 255)
+    private String passwordHash; // null for Google OAuth users
 
-    @Column(nullable = false)
+    @Column(name = "first_name", nullable = false, length = 100)
     private String firstName;
 
-    @Column(nullable = false)
+    @Column(name = "last_name", nullable = false, length = 100)
     private String lastName;
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
-    @Column(nullable = false)
-    private LocalDateTime updatedAt;
-
-    @Column(nullable = false)
-    private Boolean isActive = true;
-
-    @Column(nullable = false)
-    private Boolean emailVerified = false;
-
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserRole role = UserRole.USER;
+    @Column(nullable = false, length = 20)
+    private Role role = Role.USER;
 
-    // Constructors
-    public User() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
+    @Column(columnDefinition = "TEXT")
+    private String picture;
 
-    public User(String email, String password, String firstName, String lastName) {
-        this();
-        this.email = email;
-        this.password = password;
-        this.firstName = firstName;
-        this.lastName = lastName;
-    }
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = false;
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 
-    public String getEmail() {
-        return email;
-    }
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public String getFirstName() {
-        return firstName;
-    }
-
-    public void setFirstName(String firstName) {
-        this.firstName = firstName;
-    }
-
-    public String getLastName() {
-        return lastName;
-    }
-
-    public void setLastName(String lastName) {
-        this.lastName = lastName;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
-    public Boolean getIsActive() {
-        return isActive;
-    }
-
-    public void setIsActive(Boolean isActive) {
-        this.isActive = isActive;
-    }
-
-    public Boolean getEmailVerified() {
-        return emailVerified;
-    }
-
-    public void setEmailVerified(Boolean emailVerified) {
-        this.emailVerified = emailVerified;
-    }
-
-    public UserRole getRole() {
-        return role;
-    }
-
-    public void setRole(UserRole role) {
-        this.role = role;
+    @PrePersist
+    protected void onCreate() {
+        createdAt = Instant.now();
+        updatedAt = Instant.now();
     }
 
     @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
+    protected void onUpdate() {
+        updatedAt = Instant.now();
     }
 
-    public enum UserRole {
+    public User(String email, String passwordHash, String firstName, String lastName) {
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+
+    public enum Role {
         USER, ADMIN
     }
 }

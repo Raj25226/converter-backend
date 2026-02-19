@@ -2,18 +2,22 @@ package com.converter.repository;
 
 import com.converter.entity.Analytics;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface AnalyticsRepository extends JpaRepository<Analytics, String> {
+public interface AnalyticsRepository extends JpaRepository<Analytics, Long> {
 
-    @Query("SELECT COUNT(a) FROM Analytics a WHERE a.eventType = 'visit'")
-    long countVisits();
+    @Modifying
+    @Query("UPDATE Analytics a SET a.totalVisits = a.totalVisits + 1, a.updatedAt = CURRENT_TIMESTAMP WHERE a.id = 1")
+    void incrementTotalVisits();
 
-    @Query("SELECT COUNT(a) FROM Analytics a WHERE a.eventType = 'conversion'")
-    long countConversions();
+    @Modifying
+    @Query("UPDATE Analytics a SET a.uniqueVisitors = a.uniqueVisitors + 1, a.updatedAt = CURRENT_TIMESTAMP WHERE a.id = 1")
+    void incrementUniqueVisitors();
 
-    @Query("SELECT COUNT(DISTINCT a.ipAddress) FROM Analytics a WHERE a.eventType = 'visit'")
-    long countUniqueVisitors();
+    @Modifying
+    @Query("UPDATE Analytics a SET a.totalConversions = a.totalConversions + 1, a.updatedAt = CURRENT_TIMESTAMP WHERE a.id = 1")
+    void incrementTotalConversions();
 }

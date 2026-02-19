@@ -1,69 +1,38 @@
 package com.converter.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Builder;
+import lombok.Data;
+
+import java.time.Instant;
+
+@Data
+@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ConversionResponse {
-    private String fileId;
-    private String fileName;
-    private String downloadUrl;
-    private long fileSize;
+
     private String status;
     private String message;
+    private String downloadUrl;
+    private String fileName;
+    private Instant expiresAt;
+    private Long fileSize;
 
-    public ConversionResponse() {}
-
-    public ConversionResponse(String fileId, String fileName, String downloadUrl, long fileSize) {
-        this.fileId = fileId;
-        this.fileName = fileName;
-        this.downloadUrl = downloadUrl;
-        this.fileSize = fileSize;
-        this.status = "success";
+    public static ConversionResponse success(String downloadUrl, String fileName,
+                                             Instant expiresAt, Long fileSize) {
+        return ConversionResponse.builder()
+                .status("success")
+                .downloadUrl(downloadUrl)
+                .fileName(fileName)
+                .expiresAt(expiresAt)
+                .fileSize(fileSize)
+                .build();
     }
 
-    // Getters and Setters
-    public String getFileId() {
-        return fileId;
-    }
-
-    public void setFileId(String fileId) {
-        this.fileId = fileId;
-    }
-
-    public String getFileName() {
-        return fileName;
-    }
-
-    public void setFileName(String fileName) {
-        this.fileName = fileName;
-    }
-
-    public String getDownloadUrl() {
-        return downloadUrl;
-    }
-
-    public void setDownloadUrl(String downloadUrl) {
-        this.downloadUrl = downloadUrl;
-    }
-
-    public long getFileSize() {
-        return fileSize;
-    }
-
-    public void setFileSize(long fileSize) {
-        this.fileSize = fileSize;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
+    public static ConversionResponse error(String message) {
+        return ConversionResponse.builder()
+                .status("error")
+                .message(message)
+                .build();
     }
 }
