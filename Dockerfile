@@ -43,7 +43,7 @@ RUN mkdir -p /app/uploads /app/outputs && \
     chown -R fileconvert:fileconvert /app
 
 # Copy exact jar name (safer for production)
-COPY --from=build /app/target/converter-0.0.1.jar app.jar
+COPY --from=build /app/target/converter-1.0.0.jar app.jar
 RUN chown fileconvert:fileconvert app.jar
 
 USER fileconvert
