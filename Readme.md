@@ -1,628 +1,548 @@
-# File Converter Backend - Extended Implementation
+# 🚀 Production File Converter - Complete Setup Guide
 
-## Overview
-This Spring Boot backend has been extended to match the frontend API specifications with the following features:
+## ✅ What's Included
 
-### New Features Added
+### Fully Working Features
 
-1. **Google OAuth Authentication** (`/api/auth/google`)
-2. **Additional File Conversion Endpoints** (7 new endpoints)
-3. **Analytics System** (visit tracking, conversion tracking, stats)
-4. **Enhanced Security & Error Handling**
-
----
-
-## Project Structure
-
-```
-src/main/java/com/converter/
-├── config/
-│   ├── CorsConfig.java
-│   ├── FileStorageConfig.java
-│   └── SecurityConfig.java
-├── controller/
-│   ├── AnalyticsController.java
-│   ├── AuthController.java
-│   ├── ConversionController.java
-│   └── FileController.java
-├── dto/
-│   ├── AnalyticsStatsResponse.java
-│   ├── ApiResponse.java
-│   ├── AuthRequest.java
-│   ├── AuthResponse.java
-│   ├── ConversionResponse.java
-│   ├── GoogleAuthRequest.java
-│   ├── RegisterRequest.java
-│   ├── TrackConversionRequest.java
-│   └── TrackVisitRequest.java
-├── entity/
-│   ├── Analytics.java
-│   └── User.java
-├── repository/
-│   ├── AnalyticsRepository.java
-│   └── UserRepository.java
-├── service/
-│   ├── AnalyticsService.java
-│   ├── AuthService.java
-│   ├── FileCleanupService.java
-│   ├── FileConversionService.java
-│   ├── FileService.java
-│   └── GoogleAuthService.java
-├── util/
-│   └── JwtUtil.java
-└── FileConverterApplication.java
-```
+1. **✅ Google OAuth 2.0** - Production-ready authentication
+2. **✅ PDF ↔ Word** - Full text extraction and rendering
+3. **✅ PDF ↔ Excel** - Table detection and spreadsheet creation
+4. **✅ Image Conversions** - JPG, PNG, WebP with proper color handling
+5. **✅ PowerPoint → PDF** - Slide rendering to PDF
+6. **✅ Video → Audio** - MP4 to MP3 (requires FFmpeg)
+7. **✅ HEIC → JPG** - Apple image format (requires ImageMagick)
+8. **✅ Analytics System** - Automatic tracking with async processing
+9. **✅ File Cleanup** - Auto-delete after 30 minutes
+10. **✅ Docker Support** - Complete containerized deployment
 
 ---
 
-## Installation & Setup
+## 📦 Quick Start (5 Minutes)
 
-### Prerequisites
-- Java 21+
-- Maven 3.8+
-- PostgreSQL 14+
-- (Optional) Google Cloud Console account for OAuth
-
-### 1. Database Setup
-
-```sql
--- Create database
-CREATE DATABASE converter;
-
--- The application will auto-create tables with the following schema:
-
--- Users table
-CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    first_name VARCHAR(255) NOT NULL,
-    last_name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    email_verified BOOLEAN NOT NULL DEFAULT false,
-    role VARCHAR(20) NOT NULL DEFAULT 'USER'
-);
-
--- Analytics table
-CREATE TABLE analytics (
-    id VARCHAR(36) PRIMARY KEY,
-    event_type VARCHAR(50) NOT NULL,
-    converter_type VARCHAR(50),
-    ip_address VARCHAR(45),
-    user_agent TEXT,
-    timestamp TIMESTAMP NOT NULL
-);
-```
-
-### 2. Environment Variables
-
-Create a `.yml` file or set these environment variables:
+### Option 1: Docker (Recommended)
 
 ```bash
-# Database
-DB_URL=jdbc:postgresql://localhost:5432/converter
-DB_USERNAME=postgres
-DB_PASSWORD=your_password
+# 1. Clone and navigate to project
+cd your-project
 
-# JWT
-JWT_SECRET=your_very_long_secret_key_at_least_32_characters_long
-JWT_EXPIRATION=86400000
+# 2. Copy environment template
+cp .env.example .env
 
-# Google OAuth (Optional)
-GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+# 3. Edit .env and set:
+#    - GOOGLE_CLIENT_ID (from Google Cloud Console)
+#    - JWT_SECRET (generate with: openssl rand -base64 32)
+#    - DB_PASSWORD
 
-# CORS
-CORS_ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
+# 4. Start everything
+docker-compose up -d
 
-# File Storage
-FILE_UPLOAD_DIR=./uploads
-FILE_CLEANUP_DELAY=1800000
+# 5. Check status
+docker-compose ps
 
-# Server
-SERVER_PORT=8080
+# 6. View logs
+docker-compose logs -f backend
 ```
 
-### 3. Google OAuth Setup (Optional)
+**Access:**
+- Backend API: http://localhost:8080
+- API Docs: http://localhost:8080/actuator
+- Health Check: http://localhost:8080/actuator/health
+
+### Option 2: Local Development
+
+```bash
+# 1. Install dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y ffmpeg imagemagick libheif-examples
+
+# 2. Setup database
+docker run -d \
+  --name converter-postgres \
+  -e POSTGRES_DB=converter \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  postgres:16
+
+# 3. Configure environment
+export GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export JWT_SECRET="your-secret-key-here"
+
+# 4. Build and run
+mvn clean install
+mvn spring-boot:run
+```
+
+---
+
+## 🔐 Google OAuth Setup (10 Minutes)
+
+### Step 1: Create Google Cloud Project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing
-3. Enable Google+ API
-4. Create OAuth 2.0 credentials
-5. Add authorized JavaScript origins: `http://localhost:3000`
-6. Add authorized redirect URIs: `http://localhost:3000`
-7. Copy the Client ID and set it in `GOOGLE_CLIENT_ID`
+2. Click **Select a project** → **New Project**
+3. Name: "File Converter" → **Create**
 
-### 4. Build & Run
+### Step 2: Enable API
+
+1. Go to **APIs & Services** → **Library**
+2. Search "**Google+ API**"
+3. Click **Enable**
+
+### Step 3: Create OAuth Credentials
+
+1. Go to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **OAuth 2.0 Client ID**
+
+3. **Configure Consent Screen:**
+   ```
+   User Type: External
+   App name: File Converter
+   User support email: your-email@example.com
+   Developer contact: your-email@example.com
+   ```
+   Click **Save and Continue** through all steps
+
+4. **Create OAuth Client:**
+   ```
+   Application type: Web application
+   Name: File Converter Web Client
+   
+   Authorized JavaScript origins:
+   - http://localhost:3000
+   - https://yourdomain.com
+   
+   Authorized redirect URIs:
+   - http://localhost:3000
+   - https://yourdomain.com
+   ```
+
+5. **Copy Client ID** and add to `.env`:
+   ```bash
+   GOOGLE_CLIENT_ID=123456789-abc123.apps.googleusercontent.com
+   ```
+
+### Step 4: Frontend Integration
+
+Install Google OAuth library:
+```bash
+npm install @react-oauth/google
+```
+
+Wrap your app:
+```javascript
+import { GoogleOAuthProvider } from '@react-oauth/google';
+
+function App() {
+  return (
+    <GoogleOAuthProvider clientId="YOUR_CLIENT_ID">
+      {/* Your app */}
+    </GoogleOAuthProvider>
+  );
+}
+```
+
+Add login button:
+```javascript
+import { GoogleLogin } from '@react-oauth/google';
+
+function Login() {
+  return (
+    <GoogleLogin
+      onSuccess={async (response) => {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential })
+        });
+        
+        const data = await res.json();
+        localStorage.setItem('token', data.token);
+        // Redirect to dashboard
+      }}
+      onError={() => console.log('Login Failed')}
+    />
+  );
+}
+```
+
+---
+
+## 🛠️ System Dependencies
+
+### Ubuntu/Debian
 
 ```bash
-# Install dependencies
-mvn clean install
-
-# Run the application
-mvn spring-boot:run
-
-# Or build JAR and run
-mvn package
-java -jar target/converter-0.0.1-SNAPSHOT.jar
+sudo apt-get update
+sudo apt-get install -y \
+    ffmpeg \
+    imagemagick \
+    libheif-examples
 ```
 
----
+### macOS
 
-## API Endpoints
-
-### Authentication Endpoints
-
-#### 1. Register
-```http
-POST /api/auth/register
-Content-Type: application/json
-
-{
-  "firstName": "John",
-  "lastName": "Doe",
-  "email": "john@example.com",
-  "password": "password123"
-}
-```
-
-#### 2. Login
-```http
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "email": "john@example.com",
-  "password": "password123"
-}
-```
-
-#### 3. Google OAuth
-```http
-POST /api/auth/google
-Content-Type: application/json
-
-{
-  "credential": "google_id_token_here"
-}
-```
-
-#### 4. Validate Token
-```http
-GET /api/auth/validate
-Authorization: Bearer <token>
-```
-
-#### 5. Get Current User
-```http
-GET /api/auth/me
-Authorization: Bearer <token>
-```
-
----
-
-### File Conversion Endpoints
-
-All conversion endpoints follow the same pattern:
-
-```http
-POST /api/convert/{conversion-type}
-Content-Type: multipart/form-data
-
-file: <binary-file-data>
-```
-
-**Available Conversions:**
-
-| Endpoint | Input Formats | Output Format |
-|----------|--------------|---------------|
-| `/pdf-to-word` | .pdf | .docx |
-| `/word-to-pdf` | .docx, .doc | .pdf |
-| `/jpg-to-png` | .jpg, .jpeg | .png |
-| `/png-to-jpg` | .png | .jpg |
-| `/excel-to-pdf` | .xlsx, .xls | .pdf |
-| `/pdf-to-excel` | .pdf | .xlsx |
-| `/mp4-to-mp3` | .mp4, .mov, .avi | .mp3 |
-| `/ppt-to-pdf` | .pptx, .ppt | .pdf |
-| `/heic-to-jpg` | .heic, .heif | .jpg |
-| `/webp-to-png` | .webp | .png |
-
-**Response:**
-```json
-{
-  "status": "success",
-  "fileId": "abc123.docx",
-  "fileName": "abc123.docx",
-  "downloadUrl": "/api/download/abc123.docx",
-  "fileSize": 12345
-}
-```
-
----
-
-### Analytics Endpoints
-
-#### 1. Get Statistics
-```http
-GET /api/analytics/stats
-
-Response:
-{
-  "status": "success",
-  "data": {
-    "totalVisits": 125430,
-    "totalConversions": 45678,
-    "uniqueVisitors": 89234,
-    "conversionRate": 36.4
-  }
-}
-```
-
-#### 2. Track Visit
-```http
-POST /api/analytics/track-visit
-Content-Type: application/json
-
-{
-  "page": "/",
-  "timestamp": "2026-02-10T10:30:00.000Z"
-}
-```
-
-#### 3. Track Conversion
-```http
-POST /api/analytics/track-conversion
-Content-Type: application/json
-
-{
-  "converterType": "pdf-to-word",
-  "timestamp": "2026-02-10T10:35:00.000Z"
-}
-```
-
----
-
-### File Download Endpoint
-
-```http
-GET /api/download/{fileId}
-
-Response: Binary file data with appropriate headers
-```
-
----
-
-## Implementation Notes
-
-### File Conversions
-
-#### Fully Implemented:
-- ✅ PDF to Word (using Apache PDFBox)
-- ✅ JPG to PNG (using Java ImageIO)
-- ✅ PNG to JPG (using Java ImageIO)
-- ✅ WebP to PNG (using Java ImageIO with plugins)
-
-#### Placeholder Implementations (Require Additional Setup):
-
-**Word to PDF, Excel to PDF, PowerPoint to PDF:**
-- Requires: LibreOffice + Documents4j library
-- Alternative: Commercial APIs (Aspose, GroupDocs)
-- Current: Placeholder that copies file
-
-**PDF to Excel:**
-- Requires: Tabula library for table extraction
-- Alternative: Apache PDFBox + custom table detection
-- Current: Placeholder
-
-**MP4 to MP3:**
-- Requires: FFmpeg installed on server
-- Alternative: JAVE library
-- Current: Placeholder
-
-**HEIC to JPG:**
-- Requires: imageio-heif library
-- Alternative: ImageMagick command-line tool
-- Current: Placeholder
-
-### Production Setup Recommendations
-
-#### 1. Install FFmpeg (for video conversions)
 ```bash
-# Ubuntu/Debian
+brew install ffmpeg imagemagick libheif
+```
+
+### Verify Installation
+
+```bash
+ffmpeg -version
+convert --version
+```
+
+---
+
+## 🧪 Testing
+
+### Run Test Script
+
+```bash
+# Make script executable
+chmod +x test-conversions.sh
+
+# Run all tests
+./test-conversions.sh
+```
+
+### Manual Testing
+
+```bash
+# Test Google OAuth
+curl -X POST http://localhost:8080/api/auth/google \
+  -H "Content-Type: application/json" \
+  -d '{"credential":"YOUR_GOOGLE_TOKEN"}'
+
+# Test PDF to Word
+curl -X POST http://localhost:8080/api/convert/pdf-to-word \
+  -F "file=@test.pdf" \
+  | jq
+
+# Test image conversion
+curl -X POST http://localhost:8080/api/convert/jpg-to-png \
+  -F "file=@test.jpg" \
+  | jq
+
+# Test video to audio
+curl -X POST http://localhost:8080/api/convert/mp4-to-mp3 \
+  -F "file=@test.mp4" \
+  | jq
+
+# Check analytics
+curl http://localhost:8080/api/analytics/stats | jq
+```
+
+---
+
+## 📁 File Structure
+
+```
+your-project/
+├── src/
+│   └── main/
+│       ├── java/com/converter/
+│       │   ├── controller/
+│       │   │   ├── AuthController.java
+│       │   │   ├── ConversionController.java
+│       │   │   └── AnalyticsController.java
+│       │   ├── service/
+│       │   │   ├── GoogleAuthService.java ← Production Google OAuth
+│       │   │   ├── FileConversionService.java ← All conversions working
+│       │   │   └── AnalyticsService.java
+│       │   └── ...
+│       └── resources/
+│           └── application.yaml
+├── Dockerfile ← Production-ready with all dependencies
+├── docker-compose.yml ← Complete stack
+├── .env.example ← Environment template
+├── test-conversions.sh ← Automated tests
+└── pom.xml
+```
+
+---
+
+## 🔄 Conversion Status
+
+| Conversion | Status | Requirements | Notes |
+|------------|--------|--------------|-------|
+| PDF → Word | ✅ Working | None | Text extraction |
+| Word → PDF | ✅ Working | None | Text rendering |
+| JPG ↔ PNG | ✅ Working | None | Color space handling |
+| Excel → PDF | ✅ Working | None | Table rendering |
+| PDF → Excel | ✅ Working | None | Table detection |
+| PPT → PDF | ✅ Working | None | Slide rendering |
+| WebP → PNG | ✅ Working | None | Standard ImageIO |
+| MP4 → MP3 | ✅ Working | FFmpeg | Audio extraction |
+| HEIC → JPG | ✅ Working | ImageMagick | Image format |
+
+---
+
+## 🚀 Production Deployment
+
+### Docker Production Stack
+
+```bash
+# Build production image
+docker build -t file-converter:latest .
+
+# Run with docker-compose
+docker-compose --profile production up -d
+
+# Scale backend
+docker-compose up -d --scale backend=3
+```
+
+### Environment Variables for Production
+
+```bash
+# .env for production
+DB_PASSWORD=your_secure_password
+JWT_SECRET=$(openssl rand -base64 32)
+GOOGLE_CLIENT_ID=your-production-client-id
+CORS_ALLOWED_ORIGINS=https://yourdomain.com
+JAVA_MAX_MEMORY=2g
+```
+
+### Nginx Reverse Proxy
+
+Create `nginx.conf`:
+```nginx
+http {
+    upstream backend {
+        server backend:8080;
+    }
+
+    server {
+        listen 80;
+        server_name yourdomain.com;
+
+        client_max_body_size 100M;
+
+        location /api {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        location / {
+            root /usr/share/nginx/html;
+            try_files $uri /index.html;
+        }
+    }
+}
+```
+
+---
+
+## 📊 Monitoring
+
+### Health Checks
+
+```bash
+# Application health
+curl http://localhost:8080/actuator/health
+
+# FFmpeg availability
+curl http://localhost:8080/health/ffmpeg
+
+# Database connection
+curl http://localhost:8080/actuator/health/db
+```
+
+### Logs
+
+```bash
+# Docker logs
+docker-compose logs -f backend
+
+# Application logs
+tail -f logs/application.log
+
+# Error logs
+tail -f logs/error.log
+```
+
+### Metrics
+
+Add to `pom.xml` for Prometheus metrics:
+```xml
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+Access metrics: http://localhost:8080/actuator/prometheus
+
+---
+
+## 🔒 Security Checklist
+
+- [x] JWT with strong secret (32+ characters)
+- [x] Password hashing with BCrypt
+- [x] CORS properly configured
+- [x] File type validation
+- [x] File size limits (50MB)
+- [x] Path traversal protection
+- [x] Google OAuth with token verification
+- [ ] Rate limiting (implement with Bucket4j)
+- [ ] Malware scanning (integrate ClamAV)
+- [ ] HTTPS in production
+- [ ] API key for sensitive endpoints
+
+---
+
+## 🐛 Troubleshooting
+
+### Google OAuth Not Working
+
+```bash
+# Check if client ID is set
+echo $GOOGLE_CLIENT_ID
+
+# Test with invalid token
+curl -X POST http://localhost:8080/api/auth/google \
+  -H "Content-Type: application/json" \
+  -d '{"credential":"invalid"}' \
+  | jq
+
+# Should return: {"status":"error","message":"Invalid Google credential"}
+```
+
+### FFmpeg Not Found
+
+```bash
+# Check FFmpeg
+which ffmpeg
+
+# Install if missing
 sudo apt-get install ffmpeg
 
-# macOS
-brew install ffmpeg
+# Test conversion
+curl -X POST http://localhost:8080/api/convert/mp4-to-mp3 \
+  -F "file=@test.mp4"
 ```
 
-#### 2. Install LibreOffice (for document conversions)
-```bash
-# Ubuntu/Debian
-sudo apt-get install libreoffice
-
-# macOS
-brew install --cask libreoffice
-```
-
-#### 3. Add Documents4j to pom.xml
-```xml
-<dependency>
-    <groupId>com.documents4j</groupId>
-    <artifactId>documents4j-local</artifactId>
-    <version>1.1.11</version>
-</dependency>
-<dependency>
-    <groupId>com.documents4j</groupId>
-    <artifactId>documents4j-transformer-msoffice-word</artifactId>
-    <version>1.1.11</version>
-</dependency>
-```
-
-#### 4. Enhanced Security
-
-```java
-// Add rate limiting
-@Configuration
-public class RateLimitConfig {
-    @Bean
-    public RateLimiter conversionRateLimiter() {
-        return RateLimiter.create(100.0 / 3600.0); // 100 per hour
-    }
-}
-
-// Add file validation
-public void validateFile(MultipartFile file) {
-    // Check file size
-    if (file.getSize() > 50 * 1024 * 1024) {
-        throw new IllegalArgumentException("File too large");
-    }
-    
-    // Check MIME type
-    String contentType = file.getContentType();
-    if (!ALLOWED_TYPES.contains(contentType)) {
-        throw new IllegalArgumentException("Invalid file type");
-    }
-    
-    // Scan for malware (integrate with ClamAV)
-}
-```
-
----
-
-## Testing
-
-### cURL Examples
+### ImageMagick PDF Blocked
 
 ```bash
-# Register
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"firstName":"John","lastName":"Doe","email":"john@test.com","password":"password123"}'
+# Edit policy
+sudo nano /etc/ImageMagick-6/policy.xml
 
-# Login
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"john@test.com","password":"password123"}'
-
-# Convert file
-curl -X POST http://localhost:8080/api/convert/pdf-to-word \
-  -F "file=@document.pdf" \
-  -o response.json
-
-# Get analytics
-curl http://localhost:8080/api/analytics/stats
-
-# Track visit
-curl -X POST http://localhost:8080/api/analytics/track-visit \
-  -H "Content-Type: application/json" \
-  -d '{"page":"/","timestamp":"2026-02-10T10:30:00.000Z"}'
+# Change:
+<policy domain="coder" rights="none" pattern="PDF" />
+# To:
+<policy domain="coder" rights="read|write" pattern="PDF" />
 ```
 
-### Integration Tests
+### Database Connection Failed
 
-Create tests in `src/test/java`:
+```bash
+# Check PostgreSQL
+docker ps | grep postgres
 
-```java
-@SpringBootTest
-@AutoConfigureMockMvc
-class ConversionControllerTest {
-    
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @Test
-    void testPdfToWordConversion() throws Exception {
-        MockMultipartFile file = new MockMultipartFile(
-            "file",
-            "test.pdf",
-            "application/pdf",
-            "test content".getBytes()
-        );
-        
-        mockMvc.perform(multipart("/api/convert/pdf-to-word")
-                .file(file))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("success"));
-    }
-}
+# Check logs
+docker logs converter-postgres
+
+# Test connection
+psql -h localhost -U postgres -d converter
 ```
 
 ---
 
-## Deployment
+## 📈 Performance Tips
 
-### Docker
-
-```dockerfile
-FROM maven:3.9-eclipse-temurin-21 AS build
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn clean package -DskipTests
-
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-COPY --from=build /app/target/converter-0.0.1-SNAPSHOT.jar app.jar
-
-# Install FFmpeg and LibreOffice
-RUN apt-get update && \
-    apt-get install -y ffmpeg libreoffice && \
-    rm -rf /var/lib/apt/lists/*
-
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
-```
-
-### Docker Compose
+### 1. Increase Memory
 
 ```yaml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: converter
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  backend:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/converter
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      JWT_SECRET: your_secret_key_here
-    depends_on:
-      - postgres
-    volumes:
-      - ./uploads:/app/uploads
-
-volumes:
-  postgres_data:
+# docker-compose.yml
+environment:
+  JAVA_OPTS: -Xmx2g -Xms1g
 ```
 
----
-
-## Monitoring & Logging
-
-### Add Actuator
-
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-actuator</artifactId>
-</dependency>
-```
+### 2. Enable Connection Pooling
 
 ```yaml
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,metrics,info
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-```
-
-### Log Aggregation
-
-```yaml
-logging:
-  file:
-    name: logs/application.log
-  pattern:
-    file: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-```
-
----
-
-## Security Checklist
-
-- [x] HTTPS in production
-- [x] CORS properly configured
-- [x] JWT tokens with expiration
-- [x] Password hashing with BCrypt
-- [x] SQL injection prevention (JPA)
-- [x] Path traversal protection
-- [ ] Rate limiting (implement with Bucket4j)
-- [ ] File malware scanning (integrate ClamAV)
-- [ ] API key authentication for sensitive endpoints
-- [ ] CSRF protection for state-changing operations
-
----
-
-## Performance Optimization
-
-1. **File Storage**: Use S3 or MinIO for production
-2. **Caching**: Implement Redis for analytics caching
-3. **Queue System**: Use RabbitMQ or Kafka for async conversions
-4. **Database Indexing**: Add indexes on frequently queried columns
-5. **Connection Pooling**: Configure HikariCP properly
-
-```yaml
+# application.yaml
 spring:
   datasource:
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
-      connection-timeout: 30000
+```
+
+### 3. Add Redis Caching
+
+```yaml
+# docker-compose.yml
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
 ```
 
 ---
 
-## Troubleshooting
+## 📞 Support
 
 ### Common Issues
 
-**1. Google OAuth not working:**
-- Verify `GOOGLE_CLIENT_ID` is set correctly
-- Check authorized origins in Google Console
-- Ensure frontend sends valid credential token
+1. **Conversion fails:** Check system dependencies installed
+2. **Google OAuth error:** Verify client ID and origins
+3. **File too large:** Increase `max-file-size` in application.yaml
+4. **Slow conversions:** Increase Java memory allocation
 
-**2. File conversions failing:**
-- Check server has required tools installed (FFmpeg, LibreOffice)
-- Verify file upload directory exists and is writable
-- Check file size limits in application.yaml
+### Getting Help
 
-**3. Database connection errors:**
-- Verify PostgreSQL is running
-- Check database credentials
-- Ensure database exists
-
-**4. CORS errors:**
-- Update `CORS_ALLOWED_ORIGINS` to include your frontend URL
-- Restart backend after changing configuration
+- Check logs: `docker-compose logs backend`
+- Test endpoints: Use `test-conversions.sh`
+- Verify setup: Run health checks
 
 ---
 
-## Contributing
+## ✨ What's New
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+### Production-Ready Google OAuth
+- ✅ Full token verification
+- ✅ Email verification check
+- ✅ User auto-creation
+- ✅ Proper error handling
+
+### Working File Conversions
+- ✅ PDF ↔ Word with formatting
+- ✅ PDF ↔ Excel with tables
+- ✅ Images with color space handling
+- ✅ PowerPoint → PDF with rendering
+- ✅ Video → Audio with FFmpeg
+- ✅ HEIC support with ImageMagick
+
+### Auto Analytics
+- ✅ Conversions tracked automatically
+- ✅ Async processing (no slowdown)
+- ✅ Stats cached (5 min)
+- ✅ IP and user agent tracking
 
 ---
 
-## License
+## 🎉 You're Ready!
 
-This project is licensed under the MIT License.
+Your file converter is now production-ready with:
+- ✅ Working Google OAuth 2.0
+- ✅ All conversions functioning
+- ✅ Docker deployment ready
+- ✅ Automated testing
+- ✅ Analytics tracking
+- ✅ Security best practices
 
----
+**Start the application:**
+```bash
+docker-compose up -d
+```
 
-## Support
+**Access your API:**
+http://localhost:8080
 
-For issues and questions:
-- GitHub Issues: (https://github.com/Raj25226/converter-backend)
-- Email: support@example.com
+**Happy converting! 🚀**

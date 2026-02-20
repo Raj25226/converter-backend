@@ -1,258 +1,175 @@
 package com.converter.controller;
 
 import com.converter.dto.ConversionResponse;
-import com.converter.service.FileConversionService;
+import com.converter.service.ConversionService;
+import com.converter.util.IpUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-
 @RestController
-@Slf4j
 @RequestMapping("/api/convert")
+@RequiredArgsConstructor
+@Slf4j
 public class ConversionController {
 
-    @Autowired
-    private FileConversionService conversionService;
+    private final ConversionService conversionService;
+    private final IpUtil ipUtil;
 
-    @Value("${app.backend.download-url}")
-    private String downloadURL;
+    // ─── Documents ───────────────────────────────────────────────────────────
 
     @PostMapping("/pdf-to-word")
-    public ResponseEntity<ConversionResponse> convertPdfToWord(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting PDF to Word: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertPdfToWord(file);
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting PDF to Word", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    public ResponseEntity<ConversionResponse> pdfToWord(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.pdfToWord(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping("/word-to-pdf")
-    public ResponseEntity<ConversionResponse> convertWordToPdf(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting Word to PDF: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertWordToPdf(file);
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting Word to PDF", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }
-
-    @PostMapping("/jpg-to-png")
-    public ResponseEntity<ConversionResponse> convertJpgToPng(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting JPG to PNG: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertImageFormat(file, "png");
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting JPG to PNG", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }
-
-    @PostMapping("/png-to-jpg")
-    public ResponseEntity<ConversionResponse> convertPngToJpg(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting PNG to JPG: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertImageFormat(file, "jpg");
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting PNG to JPG", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }
-
-    @PostMapping("/excel-to-pdf")
-    public ResponseEntity<ConversionResponse> convertExcelToPdf(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting Excel to PDF: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertExcelToPdf(file);
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting Excel to PDF", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    public ResponseEntity<ConversionResponse> wordToPdf(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.wordToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping("/pdf-to-excel")
-    public ResponseEntity<ConversionResponse> convertPdfToExcel(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting PDF to Excel: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertPdfToExcel(file);
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting PDF to Excel", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    public ResponseEntity<ConversionResponse> pdfToExcel(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.pdfToExcel(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/mp4-to-mp3")
-    public ResponseEntity<ConversionResponse> convertMp4ToMp3(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting MP4 to MP3: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertVideoToAudio(file);
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting MP4 to MP3", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    @PostMapping("/excel-to-pdf")
+    public ResponseEntity<ConversionResponse> excelToPdf(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.excelToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping("/ppt-to-pdf")
-    public ResponseEntity<ConversionResponse> convertPptToPdf(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting PowerPoint to PDF: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertPptToPdf(file);
-
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting PowerPoint to PDF", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    public ResponseEntity<ConversionResponse> pptToPdf(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.pptToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/heic-to-jpg")
-    public ResponseEntity<ConversionResponse> convertHeicToJpg(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting HEIC to JPG: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertHeicToJpg(file);
+    // ─── Images ──────────────────────────────────────────────────────────────
 
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
+    @PostMapping("/jpg-to-png")
+    public ResponseEntity<ConversionResponse> jpgToPng(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.jpgToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
 
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting HEIC to JPG", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    @PostMapping("/png-to-jpg")
+    public ResponseEntity<ConversionResponse> pngToJpg(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.pngToJpg(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
+
+    @PostMapping("/jpg-to-webp")
+    public ResponseEntity<ConversionResponse> jpgToWebp(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.jpgToWebp(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping("/webp-to-png")
-    public ResponseEntity<ConversionResponse> convertWebpToPng(@RequestParam("file") MultipartFile file) {
-        try {
-            log.info("Converting WebP to PNG: {}", file.getOriginalFilename());
-            File convertedFile = conversionService.convertWebpToPng(file);
+    public ResponseEntity<ConversionResponse> webpToPng(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.webpToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
 
-            ConversionResponse response = new ConversionResponse(
-                    convertedFile.getName(),
-                    convertedFile.getName(),
-                    downloadURL + convertedFile.getName(),
-                    convertedFile.length()
-            );
+    @PostMapping("/heic-to-jpg")
+    public ResponseEntity<ConversionResponse> heicToJpg(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.heicToJpg(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
 
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error converting WebP to PNG", e);
-            ConversionResponse errorResponse = new ConversionResponse();
-            errorResponse.setStatus("error");
-            errorResponse.setMessage("Conversion failed: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
+    // ─── Media ───────────────────────────────────────────────────────────────
+
+    @PostMapping("/mp4-to-mp3")
+    public ResponseEntity<ConversionResponse> mp4ToMp3(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.mp4ToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
+
+    @PostMapping("/mp4-to-gif")
+    public ResponseEntity<ConversionResponse> mp4ToGif(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.mp4ToGif(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
+
+    @PostMapping("/wav-to-mp3")
+    public ResponseEntity<ConversionResponse> wavToMp3(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.wavToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
+
+    // ─── Utilities ───────────────────────────────────────────────────────────
+
+    @PostMapping("/zip-extract")
+    public ResponseEntity<ConversionResponse> zipExtract(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.zipExtract(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
+
+    @PostMapping("/file-compress")
+    public ResponseEntity<ConversionResponse> fileCompress(
+            @RequestParam("file") MultipartFile file,
+            Authentication auth,
+            @RequestParam(required = false) String sessionId,
+            HttpServletRequest req) {
+        return ok(conversionService.fileCompress(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private ResponseEntity<ConversionResponse> ok(ConversionResponse r) {
+        return ResponseEntity.ok(r);
+    }
+
+    private Long userId(Authentication auth) {
+        return auth != null ? (Long) auth.getPrincipal() : null;
     }
 }

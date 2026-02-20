@@ -1,90 +1,35 @@
 package com.converter.entity;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "analytics")
+@Getter
+@Setter
 public class Analytics {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    private Long id = 1L;
 
-    @Column(nullable = false)
-    private String eventType; // 'visit' or 'conversion'
+    @Column(name = "total_visits")
+    private long totalVisits = 0;
 
-    @Column
-    private String converterType;
+    @Column(name = "unique_visitors")
+    private long uniqueVisitors = 0;
 
-    @Column
-    private String ipAddress;
+    @Column(name = "total_conversions")
+    private long totalConversions = 0;
 
-    @Column(columnDefinition = "TEXT")
-    private String userAgent;
+    @Column(name = "updated_at")
+    private Instant updatedAt;
 
-    @Column(nullable = false)
-    private LocalDateTime timestamp;
-
-    // Constructors
-    public Analytics() {
-        this.timestamp = LocalDateTime.now();
-    }
-
-    public Analytics(String eventType, String converterType, String ipAddress, String userAgent) {
-        this();
-        this.eventType = eventType;
-        this.converterType = converterType;
-        this.ipAddress = ipAddress;
-        this.userAgent = userAgent;
-    }
-
-    // Getters and Setters
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getEventType() {
-        return eventType;
-    }
-
-    public void setEventType(String eventType) {
-        this.eventType = eventType;
-    }
-
-    public String getConverterType() {
-        return converterType;
-    }
-
-    public void setConverterType(String converterType) {
-        this.converterType = converterType;
-    }
-
-    public String getIpAddress() {
-        return ipAddress;
-    }
-
-    public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
-    }
-
-    public String getUserAgent() {
-        return userAgent;
-    }
-
-    public void setUserAgent(String userAgent) {
-        this.userAgent = userAgent;
-    }
-
-    public LocalDateTime getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(LocalDateTime timestamp) {
-        this.timestamp = timestamp;
+    @PrePersist
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = Instant.now();
     }
 }

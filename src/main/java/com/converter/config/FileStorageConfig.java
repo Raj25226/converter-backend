@@ -15,9 +15,19 @@ public class FileStorageConfig {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
-    @Bean
-    public Path fileStorageLocation() throws IOException {
+    @Value("${file.output-dir}")
+    private String outputDir;
+
+    @Bean(name = "uploadPath")
+    public Path uploadPath() throws IOException {
         Path path = Paths.get(uploadDir).toAbsolutePath().normalize();
+        Files.createDirectories(path);
+        return path;
+    }
+
+    @Bean(name = "outputPath")
+    public Path outputPath() throws IOException {
+        Path path = Paths.get(outputDir).toAbsolutePath().normalize();
         Files.createDirectories(path);
         return path;
     }

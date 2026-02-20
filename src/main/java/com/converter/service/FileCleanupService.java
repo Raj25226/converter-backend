@@ -1,62 +1,88 @@
 package com.converter.service;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import com.converter.entity.Conversion;
+import com.converter.repository.ConversionRepository;
+import com.converter.repository.EmailTokenRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 
 @Service
+@Slf4j
 public class FileCleanupService {
 
-    private static final Logger logger = LoggerFactory.getLogger(FileCleanupService.class);
+    private static final List<String> KNOWN_EXTENSIONS =
+            List.of("pdf", "docx", "xlsx", "pptx", "png", "jpg", "jpeg", "webp", "mp3", "gif", "zip", "gz");
 
-    @Autowired
-    private Path fileStorageLocation;
+    private final ConversionRepository conversionRepository;
+    private final EmailTokenRepository emailTokenRepository;
+    private final Path outputPath;
 
-    @Value("${file.cleanup-delay}")
-    private long cleanupDelay;
+    public FileCleanupService(ConversionRepository conversionRepository,
+                              EmailTokenRepository emailTokenRepository,
+                              @Qualifier("outputPath") Path outputPath) {
+        this.conversionRepository = conversionRepository;
+        this.emailTokenRepository = emailTokenRepository;
+        this.outputPath           = outputPath;
+    }
 
-    @Scheduled(fixedRate = 300000)
-    public void cleanupOldFiles() {
-        logger.info("Starting file cleanup task");
+    /**
+     * Runs every 60 seconds.
+     * Finds all expired conversions, deletes their physical files, then deletes the DB records.
+     */
+    @Scheduled(fixedDelayString = "${file.cleanup-interval-ms:60000}")
+    @Transactional
+    public void cleanupExpiredFiles() {
+        Instant now = Instant.now();
+        List<Conversion> expired = conversionRepository.findByExpiresAtBefore(now);
 
-        File uploadDir = fileStorageLocation.toFile();
-        if (!uploadDir.exists()) {
+        if (expired.isEmpty()) {
+            log.debug("File cleanup: no expired files found");
             return;
         }
 
-        File[] files = uploadDir.listFiles();
-        if (files == null) {
-            return;
-        }
+        log.info("File cleanup: found {} expired conversion records", expired.size());
 
-        long currentTime = Instant.now().toEpochMilli();
-        int deletedCount = 0;
+        int filesDeleted = 0;
+        int filesNotFound = 0;
 
-        for (File file : files) {
-            long fileAge = currentTime - file.lastModified();
+        for (Conversion conv : expired) {
+            if (conv.getFileId() == null) continue;
 
-            if (fileAge > cleanupDelay) {
+            for (String ext : KNOWN_EXTENSIONS) {
+                Path candidate = outputPath.resolve(conv.getFileId() + "." + ext);
                 try {
-                    Files.delete(file.toPath());
-                    deletedCount++;
-                    logger.debug("Deleted old file: {}", file.getName());
+                    if (Files.deleteIfExists(candidate)) {
+                        filesDeleted++;
+                        log.debug("Deleted expired file: {}", candidate.getFileName());
+                    }
                 } catch (IOException e) {
-                    logger.error("Failed to delete file: {}", file.getName(), e);
+                    log.warn("Could not delete expired file [{}]: {}", candidate.getFileName(), e.getMessage());
                 }
             }
         }
 
-        if (deletedCount > 0) {
-            logger.info("Cleanup completed. Deleted {} files", deletedCount);
-        }
+        int deletedRecords = conversionRepository.deleteExpiredConversions(now);
+        log.info("File cleanup complete: deleted {} physical files, {} DB records", filesDeleted, deletedRecords);
+    }
+
+    /**
+     * Runs every hour.
+     * Removes expired email tokens (verification + password reset) to keep the table clean.
+     */
+    @Scheduled(fixedDelay = 3_600_000)
+    @Transactional
+    public void cleanupExpiredTokens() {
+        log.debug("Token cleanup: starting");
+        emailTokenRepository.deleteExpiredTokens(Instant.now());
+        log.info("Token cleanup: expired email tokens removed");
     }
 }
