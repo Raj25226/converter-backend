@@ -20,21 +20,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── Redis ──────────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: fileconvert-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # ─── Backend ────────────────────────────────────────────────────────────────
   backend:
     build:
@@ -45,14 +30,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/fileconvert
       DB_USERNAME: postgres
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET:-change-this-in-production-use-openssl-rand-base64-64}
       JWT_EXPIRY_DAYS: ${JWT_EXPIRY_DAYS:-7}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -80,6 +61,5 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   uploads:
   outputs:

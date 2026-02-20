@@ -8,14 +8,14 @@ import com.converter.repository.ToolStatRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -24,12 +24,12 @@ public class AnalyticsService {
 
     private final AnalyticsRepository analyticsRepository;
     private final ToolStatRepository toolStatRepository;
-    private final StringRedisTemplate redisTemplate;
 
-    private static final String SESSION_PREFIX = "session:";
-    private static final Duration SESSION_TTL = Duration.ofMinutes(30);
+    // In-memory session tracking (replaces Redis). Stores sessionId -> true.
+    // ConcurrentHashMap is thread-safe. Sessions persist for the lifetime of the process.
+    // This is sufficient for single-instance deployments. For multi-instance, use a DB table.
+    private final ConcurrentHashMap<String, Boolean> seenSessions = new ConcurrentHashMap<>();
 
-    // All supported converter types
     private static final List<String> ALL_TOOLS = Arrays.asList(
             "pdf-to-word", "word-to-pdf", "pdf-to-excel", "excel-to-pdf", "ppt-to-pdf",
             "jpg-to-png", "png-to-jpg", "jpg-to-webp", "webp-to-png", "heic-to-jpg",
@@ -38,59 +38,92 @@ public class AnalyticsService {
     );
 
     @PostConstruct
+    @Transactional
     public void initializeData() {
-        // Ensure analytics row exists
+        log.info("Initializing analytics data...");
+
         if (!analyticsRepository.existsById(1L)) {
             Analytics analytics = new Analytics();
             analyticsRepository.save(analytics);
-            log.info("Analytics row initialized");
+            log.info("Analytics row created (id=1)");
+        } else {
+            log.info("Analytics row already exists");
         }
 
-        // Ensure all tool stat rows exist
-        ALL_TOOLS.forEach(tool -> {
+        int created = 0;
+        for (String tool : ALL_TOOLS) {
             if (!toolStatRepository.existsById(tool)) {
                 toolStatRepository.save(new ToolStat(tool));
+                created++;
             }
-        });
-        log.info("Tool stats initialized for {} tools", ALL_TOOLS.size());
+        }
+        log.info("Tool stats initialized: {} tools total, {} newly created", ALL_TOOLS.size(), created);
     }
 
     // ─── Track Visit ─────────────────────────────────────────────────────────
+    // @Async = fire and forget, does NOT block the HTTP response.
+    // Split into two methods so @Async and @Transactional are on different proxy calls.
 
     @Async
-    @Transactional
     public void trackVisit(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            log.debug("trackVisit skipped: null or blank sessionId");
+            return;
+        }
         try {
-            String key = SESSION_PREFIX + sessionId;
-            Boolean isNew = redisTemplate.opsForValue().setIfAbsent(key, "1", SESSION_TTL);
-
-            analyticsRepository.incrementTotalVisits();
-
-            if (Boolean.TRUE.equals(isNew)) {
-                analyticsRepository.incrementUniqueVisitors();
-            }
+            doTrackVisit(sessionId);
         } catch (Exception e) {
-            log.error("Error tracking visit: {}", e.getMessage());
+            log.error("Failed to track visit for session [{}]: {}", sessionId, e.getMessage(), e);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void doTrackVisit(String sessionId) {
+        analyticsRepository.incrementTotalVisits();
+        log.debug("Total visits incremented for session [{}]", sessionId);
+
+        // putIfAbsent returns null if key was absent (i.e. new session)
+        Boolean alreadySeen = seenSessions.putIfAbsent(sessionId, Boolean.TRUE);
+        if (alreadySeen == null) {
+            analyticsRepository.incrementUniqueVisitors();
+            log.debug("Unique visitor incremented for new session [{}]", sessionId);
+        } else {
+            log.debug("Session [{}] already counted as unique visitor", sessionId);
         }
     }
 
     // ─── Track Conversion ────────────────────────────────────────────────────
+    // Called ONLY from ConversionService.doConvert() — NOT from the frontend analytics endpoint.
+    // The AnalyticsController.trackConversion() is for page-level frontend tracking only
+    // and should NOT call this method to avoid double-counting.
 
     @Async
-    @Transactional
     public void trackConversion(String converterType) {
+        if (converterType == null || converterType.isBlank()) {
+            log.warn("trackConversion called with null/blank converterType");
+            return;
+        }
         try {
-            analyticsRepository.incrementTotalConversions();
-
-            // Increment per-tool stat (upsert)
-            int updated = toolStatRepository.incrementCount(converterType);
-            if (updated == 0) {
-                ToolStat stat = new ToolStat(converterType);
-                stat.setCount(1);
-                toolStatRepository.save(stat);
-            }
+            doTrackConversion(converterType);
         } catch (Exception e) {
-            log.error("Error tracking conversion for {}: {}", converterType, e.getMessage());
+            log.error("Failed to track conversion for type [{}]: {}", converterType, e.getMessage(), e);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void doTrackConversion(String converterType) {
+        analyticsRepository.incrementTotalConversions();
+        log.debug("Total conversions incremented for type [{}]", converterType);
+
+        int updated = toolStatRepository.incrementCount(converterType);
+        if (updated == 0) {
+            // Tool not seeded yet (shouldn't normally happen after @PostConstruct)
+            log.warn("Tool stat not found for [{}], creating new entry", converterType);
+            ToolStat stat = new ToolStat(converterType);
+            stat.setCount(1);
+            toolStatRepository.save(stat);
+        } else {
+            log.debug("Tool stat incremented for [{}]", converterType);
         }
     }
 
@@ -98,25 +131,28 @@ public class AnalyticsService {
 
     public AnalyticsStatsResponse getStats() {
         try {
-            Analytics analytics = analyticsRepository.findById(1L)
-                    .orElse(new Analytics());
+            Analytics analytics = analyticsRepository.findById(1L).orElse(new Analytics());
 
-            long visits = analytics.getTotalVisits();
+            long visits      = analytics.getTotalVisits();
             long conversions = analytics.getTotalConversions();
-            long unique = analytics.getUniqueVisitors();
-
+            long unique      = analytics.getUniqueVisitors();
             double rate = visits > 0
                     ? Math.round((conversions * 100.0 / visits) * 10.0) / 10.0
                     : 0.0;
 
+            log.debug("Stats fetched: visits={}, conversions={}, unique={}, rate={}%",
+                    visits, conversions, unique, rate);
+
             return AnalyticsStatsResponse.success(visits, conversions, unique, rate);
         } catch (Exception e) {
-            log.error("Error fetching analytics stats: {}", e.getMessage());
+            log.error("Error fetching analytics stats: {}", e.getMessage(), e);
             return AnalyticsStatsResponse.success(0, 0, 0, 0.0);
         }
     }
 
     public List<ToolStat> getToolStats() {
-        return toolStatRepository.findAllByOrderByCountDesc();
+        List<ToolStat> stats = toolStatRepository.findAllByOrderByCountDesc();
+        log.debug("Fetched {} tool stats", stats.size());
+        return stats;
     }
 }

@@ -17,6 +17,7 @@ public class UserPageResponse {
     private long total;
     private int limit;
     private int offset;
+    private String status;
 
     @Data
     @Builder

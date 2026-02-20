@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
 
 import java.time.Instant;
 
@@ -25,8 +24,9 @@ public class User {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
+    /** Null for Google OAuth users who signed up via Google. */
     @Column(name = "password_hash", length = 255)
-    private String passwordHash; // null for Google OAuth users
+    private String passwordHash;
 
     @Column(name = "first_name", nullable = false, length = 100)
     private String firstName;
@@ -45,7 +45,7 @@ public class User {
     private boolean emailVerified = false;
 
     @Column(name = "is_active", nullable = false)
-    private boolean isActive = true;
+    private boolean active = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

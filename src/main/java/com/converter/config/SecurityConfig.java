@@ -11,9 +11,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -28,9 +28,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.stereotype.Component;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,14 +49,32 @@ public class SecurityConfig {
     }
 
     @Bean
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${cors.allowed-origins}") String allowedOrigins) {
+        CorsConfiguration config = new CorsConfiguration();
+        // Support comma-separated list of origins
+        config.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
-                                           JwtAuthFilter jwtAuthFilter) throws Exception {
+                                           JwtAuthFilter jwtAuthFilter,
+                                           CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configure(http))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public auth endpoints
+                        // ── Public auth endpoints ─────────────────────────────
                         .requestMatchers(
                                 "/api/auth/signup",
                                 "/api/auth/login",
@@ -62,15 +84,16 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password"
                         ).permitAll()
-                        // Public conversion and download endpoints
+                        // ── Public conversion & download ─────────────────────
                         .requestMatchers("/api/convert/**").permitAll()
                         .requestMatchers("/api/download/**").permitAll()
-                        // Public analytics
+                        // ── Public analytics ─────────────────────────────────
                         .requestMatchers("/api/analytics/**").permitAll()
-                        // Admin only
+                        // ── Admin only ────────────────────────────────────────
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        // Profile/history requires authentication
+                        // ── Authenticated user endpoints ─────────────────────
                         .requestMatchers(
+                                "/api/auth/me",
                                 "/api/auth/profile",
                                 "/api/auth/change-password",
                                 "/api/user/**"
@@ -79,20 +102,30 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((req, res, e) -> sendError(res, 401, "Unauthorized"))
-                        .accessDeniedHandler((req, res, e) -> sendError(res, 403, "Forbidden"))
+                        .authenticationEntryPoint((req, res, e) -> {
+                            log.warn("Unauthorized access to [{}]: {}", req.getRequestURI(), e.getMessage());
+                            sendError(res, 401, "Unauthorized: " + e.getMessage());
+                        })
+                        .accessDeniedHandler((req, res, e) -> {
+                            log.warn("Access denied to [{}]: {}", req.getRequestURI(), e.getMessage());
+                            sendError(res, 403, "Forbidden: insufficient permissions");
+                        })
                 );
 
         return http.build();
     }
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
+
     private void sendError(HttpServletResponse res, int status, String message) throws IOException {
         res.setStatus(status);
         res.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        res.setCharacterEncoding("UTF-8");
         new ObjectMapper().writeValue(res.getWriter(), ApiResponse.error(message));
     }
 
-    // ─── JWT Filter ─────────────────────────────────────────────────────────
+    // ─── JWT Auth Filter ─────────────────────────────────────────────────────
 
     @Component
     @RequiredArgsConstructor
@@ -106,19 +139,22 @@ public class SecurityConfig {
         protected void doFilterInternal(HttpServletRequest request,
                                         HttpServletResponse response,
                                         FilterChain chain) throws ServletException, IOException {
+
+            String path = request.getRequestURI();
             String header = request.getHeader("Authorization");
+
             if (header == null || !header.startsWith("Bearer ")) {
+                log.trace("No Bearer token on request [{}], continuing unauthenticated", path);
                 chain.doFilter(request, response);
                 return;
             }
 
-            String token = header.substring(7);
+            String token = header.substring(7).trim();
             try {
                 if (jwtUtil.validateToken(token)) {
                     Long userId = jwtUtil.getUserIdFromToken(token);
-                    String role = jwtUtil.getRoleFromToken(token);
+                    String role  = jwtUtil.getRoleFromToken(token);
 
-                    // Verify user still exists and is active
                     Optional<User> userOpt = userRepository.findById(userId);
                     if (userOpt.isPresent() && userOpt.get().isActive()) {
                         List<SimpleGrantedAuthority> authorities = List.of(
@@ -127,10 +163,17 @@ public class SecurityConfig {
                         UsernamePasswordAuthenticationToken auth =
                                 new UsernamePasswordAuthenticationToken(userId, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(auth);
+                        log.debug("Authenticated user id=[{}] role=[{}] on [{}]", userId, role, path);
+                    } else if (userOpt.isEmpty()) {
+                        log.warn("JWT references unknown userId=[{}], ignoring token", userId);
+                    } else {
+                        log.warn("User id=[{}] is suspended/inactive, denying JWT auth", userId);
                     }
+                } else {
+                    log.debug("Invalid JWT token on request [{}]", path);
                 }
             } catch (Exception e) {
-                log.debug("JWT processing error: {}", e.getMessage());
+                log.warn("JWT processing error on [{}]: {}", path, e.getMessage());
             }
 
             chain.doFilter(request, response);

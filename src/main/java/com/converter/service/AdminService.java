@@ -27,13 +27,18 @@ public class AdminService {
     private final AnalyticsService analyticsService;
 
     public AdminStatsResponse getStats() {
+        log.info("Admin: fetching dashboard stats");
+
         var analyticsStats = analyticsService.getStats();
         List<ToolStat> toolStats = analyticsService.getToolStats();
         long totalUsers = userRepository.count();
 
         var data = analyticsStats.getData();
-        double rate = (data != null && data.getTotalVisits() > 0)
-                ? Math.round((data.getTotalConversions() * 100.0 / data.getTotalVisits()) * 10.0) / 10.0
+        long visits      = data != null ? data.getTotalVisits()      : 0;
+        long conversions = data != null ? data.getTotalConversions() : 0;
+        long unique      = data != null ? data.getUniqueVisitors()   : 0;
+        double rate = visits > 0
+                ? Math.round((conversions * 100.0 / visits) * 10.0) / 10.0
                 : 0.0;
 
         List<AdminStatsResponse.ToolStatDto> toolStatDtos = toolStats.stream()
@@ -43,10 +48,14 @@ public class AdminService {
                         .build())
                 .collect(Collectors.toList());
 
+        log.info("Admin stats: users={}, visits={}, conversions={}, unique={}, rate={}%",
+                totalUsers, visits, conversions, unique, rate);
+
         return AdminStatsResponse.builder()
-                .totalVisits(data != null ? data.getTotalVisits() : 0)
-                .totalConversions(data != null ? data.getTotalConversions() : 0)
-                .uniqueVisitors(data != null ? data.getUniqueVisitors() : 0)
+                .status("success")
+                .totalVisits(visits)
+                .totalConversions(conversions)
+                .uniqueVisitors(unique)
                 .conversionRate(rate)
                 .totalUsers(totalUsers)
                 .toolStats(toolStatDtos)
@@ -54,19 +63,26 @@ public class AdminService {
     }
 
     public UserPageResponse getUsers(int limit, int offset, String search) {
-        limit = Math.min(limit, 100);
-        Page<User> page = userRepository.searchUsers(
-                search,
-                PageRequest.of(offset / limit, limit)
-        );
+        limit = Math.min(Math.max(limit, 1), 100);
+        int page = offset / limit;
 
-        List<UserPageResponse.UserItem> items = page.getContent().stream()
+        // ✅ Normalize null search to empty string for the JPQL query
+        String normalizedSearch = (search == null) ? "" : search.trim();
+
+        log.info("Admin: list users — page={}, limit={}, search=[{}]", page, limit, normalizedSearch);
+
+        Page<User> userPage = userRepository.searchUsers(normalizedSearch, PageRequest.of(page, limit));
+
+        List<UserPageResponse.UserItem> items = userPage.getContent().stream()
                 .map(UserPageResponse::fromUser)
                 .collect(Collectors.toList());
 
+        log.info("Admin: returned {} users (total={})", items.size(), userPage.getTotalElements());
+
         return UserPageResponse.builder()
+                .status("success")
                 .users(items)
-                .total(page.getTotalElements())
+                .total(userPage.getTotalElements())
                 .limit(limit)
                 .offset(offset)
                 .build();
@@ -74,30 +90,45 @@ public class AdminService {
 
     @Transactional
     public void updateUser(Long userId, UserUpdateRequest req) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+        log.info("Admin: update user=[{}] role=[{}] active=[{}]", userId, req.getRole(), req.getIsActive());
 
-        if (req.getRole() != null) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.warn("Admin: user=[{}] not found for update", userId);
+                    return new AppException("User not found", HttpStatus.NOT_FOUND);
+                });
+
+        if (req.getRole() != null && !req.getRole().isBlank()) {
             try {
                 user.setRole(User.Role.valueOf(req.getRole().toUpperCase()));
+                log.info("Admin: user=[{}] role changed to [{}]", userId, req.getRole());
             } catch (IllegalArgumentException e) {
-                throw new AppException("Invalid role: " + req.getRole(), HttpStatus.BAD_REQUEST);
+                log.warn("Admin: invalid role [{}] for user=[{}]", req.getRole(), userId);
+                throw new AppException("Invalid role: '" + req.getRole() + "'. Must be USER or ADMIN.",
+                        HttpStatus.BAD_REQUEST);
             }
         }
 
         if (req.getIsActive() != null) {
             user.setActive(req.getIsActive());
+            log.info("Admin: user=[{}] active set to [{}]", userId, req.getIsActive());
         }
 
         userRepository.save(user);
-        log.info("Admin updated user {}: role={}, active={}", userId, req.getRole(), req.getIsActive());
+        log.info("Admin: user=[{}] updated successfully", userId);
     }
 
     @Transactional
     public void deleteUser(Long userId) {
+        log.info("Admin: delete user=[{}]", userId);
+
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> {
+                    log.warn("Admin: user=[{}] not found for delete", userId);
+                    return new AppException("User not found", HttpStatus.NOT_FOUND);
+                });
+
         userRepository.delete(user);
-        log.info("Admin deleted user: {}", userId);
+        log.info("Admin: user=[{}] email=[{}] deleted", userId, user.getEmail());
     }
 }

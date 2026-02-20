@@ -10,9 +10,10 @@ server:
 
 spring:
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/converter}
+    url: ${DATABASE_URL:jdbc:postgresql://trolley.proxy.rlwy.net:44659/railway?sslmode=require}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    password: ${DB_PASSWORD:IouYWODYzKDbtrPGnamLHEZjTuUplywY}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
@@ -24,6 +25,7 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
+    open-in-view: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -33,23 +35,12 @@ spring:
         order_inserts: true
         order_updates: true
 
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: 5000ms
-      lettuce:
-        pool:
-          max-active: 16
-          max-idle: 8
-          min-idle: 2
 
   mail:
     host: ${SMTP_HOST:smtp.gmail.com}
     port: ${SMTP_PORT:587}
-    username: ${SMTP_USERNAME:}
-    password: ${SMTP_PASSWORD:}
+    username: ${SMTP_USERNAME:unimorpher@gmail.com}
+    password: ${SMTP_PASSWORD:upda vdrb dyxj wayt}
     properties:
       mail:
         smtp:
@@ -61,20 +52,20 @@ spring:
           timeout: 10000
           writetimeout: 10000
 
-# JWT
+# ── JWT ────────────────────────────────────────────────────────────────────────
 jwt:
-  secret: ${JWT_SECRET:change-this-secret-to-a-very-long-random-string-at-least-64-chars}
+  secret: ${JWT_SECRET:Z1Z3dHNjZkM1YVZKcTg2Z2ZpN3ZKcW1KQ2l2bVd5dE1OZkpQY1JYcXJxU29nQ1hJRW5hN0Npb1E=}
   expiration-days: ${JWT_EXPIRY_DAYS:7}
 
-# Google OAuth
+# ── Google OAuth ───────────────────────────────────────────────────────────────
 google:
   client-id: ${GOOGLE_CLIENT_ID:}
 
-# CORS
+# ── CORS ───────────────────────────────────────────────────────────────────────
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
-# File Storage
+# ── File Storage ───────────────────────────────────────────────────────────────
 file:
   upload-dir: ${UPLOAD_DIR:/tmp/fileconvert/uploads}
   output-dir: ${OUTPUT_DIR:/tmp/fileconvert/outputs}
@@ -82,21 +73,22 @@ file:
   expiry-minutes: ${FILE_EXPIRY_MINUTES:30}
   cleanup-interval-ms: 60000
 
-# App
+# ── App ────────────────────────────────────────────────────────────────────────
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   backend-download-url: ${BACKEND_URL:http://localhost:8080}/api/download/
 
-# Conversion limits
+# ── Conversion Limits ──────────────────────────────────────────────────────────
 conversion:
-  guest-daily-limit: 2
-  user-daily-limit: 10
+  guest-daily-limit: ${CONVERSION_GUEST_DAILY_LIMIT:5}
+  user-daily-limit: ${CONVERSION_USER_DAILY_LIMIT:15}
 
-# Logging
+# ── Logging ────────────────────────────────────────────────────────────────────
 logging:
   level:
     com.converter: INFO
     org.springframework.security: WARN
     org.hibernate.SQL: WARN
+    org.springframework.web: WARN
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

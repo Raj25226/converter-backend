@@ -1,9 +1,9 @@
 package com.converter.controller;
 
+import com.converter.dto.ApiResponse;
 import com.converter.dto.ConversionHistoryResponse;
 import com.converter.entity.Conversion;
 import com.converter.service.ConversionService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.FileSystemResource;
@@ -18,81 +18,121 @@ import java.io.File;
 import java.nio.file.Path;
 
 @RestController
-@RequiredArgsConstructor
 @Slf4j
 public class FileController {
 
     private final ConversionService conversionService;
-    private final @Qualifier("outputPath") Path outputPath;
+    private final Path outputPath;
 
-    // GET /api/download/:fileId
+    // ✅ Explicit constructor — @Qualifier does NOT work with @RequiredArgsConstructor on fields
+    public FileController(ConversionService conversionService,
+                          @Qualifier("outputPath") Path outputPath) {
+        this.conversionService = conversionService;
+        this.outputPath        = outputPath;
+    }
+
+    // GET /api/download/:fileId — public, no auth required
     @GetMapping("/api/download/{fileId}")
     public ResponseEntity<Resource> download(@PathVariable String fileId) {
-        // Validate against DB (checks expiry)
-        Conversion conv = conversionService.getConversionForDownload(fileId);
+        log.info("Download request for fileId=[{}]", fileId);
 
-        // Find the actual file on disk
-        String fileName = conv.getConvertedFileName();
-        String ext = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.') + 1) : "";
-
-        File file = null;
-        if (!ext.isEmpty()) {
-            file = outputPath.resolve(fileId + "." + ext).toFile();
+        // Basic validation — reject anything that looks like path traversal
+        if (fileId == null || fileId.isBlank() || fileId.contains("..") || fileId.contains("/")) {
+            log.warn("Download rejected: invalid fileId=[{}]", fileId);
+            return ResponseEntity.badRequest().build();
         }
 
-        // Fallback: scan for any file with this UUID
-        if (file == null || !file.exists()) {
-            for (String candidate : new String[]{"pdf","docx","xlsx","png","jpg","webp","mp3","gif","zip","gz"}) {
-                File f = outputPath.resolve(fileId + "." + candidate).toFile();
-                if (f.exists()) { file = f; break; }
+        // Validate DB record and check expiry
+        Conversion conv = conversionService.getConversionForDownload(fileId);
+
+        // Determine extension from stored file name
+        String convertedName = conv.getConvertedFileName();
+        String ext = "";
+        if (convertedName != null && convertedName.contains(".")) {
+            ext = convertedName.substring(convertedName.lastIndexOf('.') + 1).toLowerCase();
+        }
+
+        // Try primary extension first
+        File file = null;
+        if (!ext.isEmpty()) {
+            File candidate = outputPath.resolve(fileId + "." + ext).toFile();
+            if (candidate.exists()) {
+                file = candidate;
+                log.debug("Found file by primary extension: {}.{}", fileId, ext);
+            }
+        }
+
+        // Fallback: scan all known extensions
+        if (file == null) {
+            for (String tryExt : new String[]{"pdf","docx","xlsx","pptx","png","jpg","webp","mp3","gif","zip","gz"}) {
+                File candidate = outputPath.resolve(fileId + "." + tryExt).toFile();
+                if (candidate.exists()) {
+                    file = candidate;
+                    ext  = tryExt;
+                    log.debug("Found file by fallback extension: {}.{}", fileId, tryExt);
+                    break;
+                }
             }
         }
 
         if (file == null || !file.exists()) {
-            log.warn("File not found on disk for fileId: {}", fileId);
+            log.warn("Download failed: physical file missing on disk for fileId=[{}]", fileId);
             return ResponseEntity.notFound().build();
         }
 
-        Resource resource = new FileSystemResource(file);
-        String contentType = resolveContentType(ext);
+        String contentType  = resolveContentType(ext);
+        String safeFilename = sanitizeFilename(convertedName != null ? convertedName : fileId);
+
+        log.info("Download serving: fileId=[{}], name=[{}], size=[{}] bytes, type=[{}]",
+                fileId, safeFilename, file.length(), contentType);
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + conv.getConvertedFileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFilename + "\"")
                 .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(file.length())
-                .body(resource);
+                .body(new FileSystemResource(file));
     }
 
-    // GET /api/user/history (🔒 auth required)
+    // GET /api/user/history — requires authentication
     @GetMapping("/api/user/history")
     public ResponseEntity<ConversionHistoryResponse> getHistory(Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
+        log.debug("Conversion history requested for userId=[{}]", userId);
         return ResponseEntity.ok(conversionService.getUserHistory(userId));
     }
 
-    // DELETE /api/user/history/:id (🔒 auth required)
+    // DELETE /api/user/history/:id — requires authentication
     @DeleteMapping("/api/user/history/{id}")
-    public ResponseEntity<Void> deleteHistory(@PathVariable Long id, Authentication auth) {
+    public ResponseEntity<ApiResponse> deleteHistory(@PathVariable Long id, Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
+        log.info("Delete history record: conversionId=[{}] by userId=[{}]", id, userId);
         conversionService.deleteConversionRecord(id, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success("Conversion record deleted successfully"));
     }
 
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
     private String resolveContentType(String ext) {
+        if (ext == null) return "application/octet-stream";
         return switch (ext.toLowerCase()) {
-            case "pdf"  -> "application/pdf";
-            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            case "png"  -> "image/png";
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "webp" -> "image/webp";
-            case "gif"  -> "image/gif";
-            case "mp3"  -> "audio/mpeg";
-            case "zip"  -> "application/zip";
-            case "gz"   -> "application/gzip";
-            default     -> "application/octet-stream";
+            case "pdf"        -> "application/pdf";
+            case "docx"       -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xlsx"       -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "pptx"       -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "png"        -> "image/png";
+            case "jpg","jpeg" -> "image/jpeg";
+            case "webp"       -> "image/webp";
+            case "gif"        -> "image/gif";
+            case "mp3"        -> "audio/mpeg";
+            case "zip"        -> "application/zip";
+            case "gz"         -> "application/gzip";
+            default           -> "application/octet-stream";
         };
+    }
+
+    /** Remove characters that could cause issues in Content-Disposition header. */
+    private String sanitizeFilename(String name) {
+        if (name == null || name.isBlank()) return "download";
+        return name.replaceAll("[^a-zA-Z0-9._\\-]", "_");
     }
 }

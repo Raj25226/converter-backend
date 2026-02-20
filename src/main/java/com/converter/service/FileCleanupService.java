@@ -19,6 +19,9 @@ import java.util.List;
 @Slf4j
 public class FileCleanupService {
 
+    private static final List<String> KNOWN_EXTENSIONS =
+            List.of("pdf", "docx", "xlsx", "pptx", "png", "jpg", "jpeg", "webp", "mp3", "gif", "zip", "gz");
+
     private final ConversionRepository conversionRepository;
     private final EmailTokenRepository emailTokenRepository;
     private final Path outputPath;
@@ -28,57 +31,58 @@ public class FileCleanupService {
                               @Qualifier("outputPath") Path outputPath) {
         this.conversionRepository = conversionRepository;
         this.emailTokenRepository = emailTokenRepository;
-        this.outputPath = outputPath;
+        this.outputPath           = outputPath;
     }
 
     /**
-     * Run every 60 seconds: delete expired conversion files and DB records.
+     * Runs every 60 seconds.
+     * Finds all expired conversions, deletes their physical files, then deletes the DB records.
      */
     @Scheduled(fixedDelayString = "${file.cleanup-interval-ms:60000}")
     @Transactional
     public void cleanupExpiredFiles() {
         Instant now = Instant.now();
-
         List<Conversion> expired = conversionRepository.findByExpiresAtBefore(now);
-        if (expired.isEmpty()) return;
 
-        int fileCount = 0;
-        int recordCount = 0;
+        if (expired.isEmpty()) {
+            log.debug("File cleanup: no expired files found");
+            return;
+        }
+
+        log.info("File cleanup: found {} expired conversion records", expired.size());
+
+        int filesDeleted = 0;
+        int filesNotFound = 0;
 
         for (Conversion conv : expired) {
-            // Delete physical file
-            if (conv.getFileId() != null) {
-                Path file = outputPath.resolve(conv.getFileId() + ".*");
-                // Try common extensions
-                for (String ext : List.of("pdf","docx","xlsx","pptx","png","jpg","webp","mp3","gif","zip","gz")) {
-                    try {
-                        Path candidate = outputPath.resolve(conv.getFileId() + "." + ext);
-                        if (Files.deleteIfExists(candidate)) {
-                            fileCount++;
-                            log.debug("Deleted expired file: {}", candidate.getFileName());
-                        }
-                    } catch (IOException e) {
-                        log.warn("Could not delete file {}: {}", conv.getFileId(), e.getMessage());
+            if (conv.getFileId() == null) continue;
+
+            for (String ext : KNOWN_EXTENSIONS) {
+                Path candidate = outputPath.resolve(conv.getFileId() + "." + ext);
+                try {
+                    if (Files.deleteIfExists(candidate)) {
+                        filesDeleted++;
+                        log.debug("Deleted expired file: {}", candidate.getFileName());
                     }
+                } catch (IOException e) {
+                    log.warn("Could not delete expired file [{}]: {}", candidate.getFileName(), e.getMessage());
                 }
             }
-            recordCount++;
         }
 
         int deletedRecords = conversionRepository.deleteExpiredConversions(now);
-
-        if (recordCount > 0) {
-            log.info("Cleanup: deleted {} files, {} DB records", fileCount, deletedRecords);
-        }
+        log.info("File cleanup complete: deleted {} physical files, {} DB records", filesDeleted, deletedRecords);
     }
 
     /**
-     * Run once per hour: clean expired email tokens.
+     * Runs every hour.
+     * Removes expired email tokens (verification + password reset) to keep the table clean.
      */
     @Scheduled(fixedDelay = 3_600_000)
     @Transactional
     public void cleanupExpiredTokens() {
+        log.debug("Token cleanup: starting");
         emailTokenRepository.deleteExpiredTokens(Instant.now());
-        log.debug("Cleaned up expired email tokens");
+        log.info("Token cleanup: expired email tokens removed");
     }
 }
