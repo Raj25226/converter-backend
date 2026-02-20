@@ -9,8 +9,8 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
@@ -24,10 +24,13 @@ public class AnalyticsService {
 
     private final AnalyticsRepository analyticsRepository;
     private final ToolStatRepository toolStatRepository;
+    // ✅ Inject the writer bean — NOT a self-call, so Spring's @Transactional proxy fires correctly
+    private final AnalyticsWriter analyticsWriter;
 
-    // In-memory session tracking (replaces Redis). Stores sessionId -> true.
-    // ConcurrentHashMap is thread-safe. Sessions persist for the lifetime of the process.
-    // This is sufficient for single-instance deployments. For multi-instance, use a DB table.
+    /**
+     * In-memory session deduplication (replaces Redis).
+     * Thread-safe. Resets on process restart — acceptable for single-instance deployments.
+     */
     private final ConcurrentHashMap<String, Boolean> seenSessions = new ConcurrentHashMap<>();
 
     private static final List<String> ALL_TOOLS = Arrays.asList(
@@ -43,8 +46,7 @@ public class AnalyticsService {
         log.info("Initializing analytics data...");
 
         if (!analyticsRepository.existsById(1L)) {
-            Analytics analytics = new Analytics();
-            analyticsRepository.save(analytics);
+            analyticsRepository.save(new Analytics());
             log.info("Analytics row created (id=1)");
         } else {
             log.info("Analytics row already exists");
@@ -60,10 +62,13 @@ public class AnalyticsService {
         log.info("Tool stats initialized: {} tools total, {} newly created", ALL_TOOLS.size(), created);
     }
 
-    // ─── Track Visit ─────────────────────────────────────────────────────────
-    // @Async = fire and forget, does NOT block the HTTP response.
-    // Split into two methods so @Async and @Transactional are on different proxy calls.
+    // ─── Track Visit ──────────────────────────────────────────────────────────
 
+    /**
+     * Called from AnalyticsController on every page view.
+     * @Async = fire-and-forget, never blocks the HTTP response.
+     * Delegates DB writes to AnalyticsWriter so @Transactional proxy is not bypassed.
+     */
     @Async
     public void trackVisit(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
@@ -71,32 +76,24 @@ public class AnalyticsService {
             return;
         }
         try {
-            doTrackVisit(sessionId);
+            boolean isNewSession = seenSessions.putIfAbsent(sessionId, Boolean.TRUE) == null;
+            analyticsWriter.writeVisit(isNewSession);
+            if (isNewSession) {
+                log.debug("New unique visitor recorded for session=[{}]", sessionId);
+            } else {
+                log.debug("Returning visitor, session=[{}]", sessionId);
+            }
         } catch (Exception e) {
-            log.error("Failed to track visit for session [{}]: {}", sessionId, e.getMessage(), e);
-        }
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void doTrackVisit(String sessionId) {
-        analyticsRepository.incrementTotalVisits();
-        log.debug("Total visits incremented for session [{}]", sessionId);
-
-        // putIfAbsent returns null if key was absent (i.e. new session)
-        Boolean alreadySeen = seenSessions.putIfAbsent(sessionId, Boolean.TRUE);
-        if (alreadySeen == null) {
-            analyticsRepository.incrementUniqueVisitors();
-            log.debug("Unique visitor incremented for new session [{}]", sessionId);
-        } else {
-            log.debug("Session [{}] already counted as unique visitor", sessionId);
+            log.error("Failed to track visit for session=[{}]: {}", sessionId, e.getMessage(), e);
         }
     }
 
     // ─── Track Conversion ────────────────────────────────────────────────────
-    // Called ONLY from ConversionService.doConvert() — NOT from the frontend analytics endpoint.
-    // The AnalyticsController.trackConversion() is for page-level frontend tracking only
-    // and should NOT call this method to avoid double-counting.
 
+    /**
+     * Called ONLY from ConversionService.doConvert() after a successful conversion.
+     * ⚠️  NOT called from AnalyticsController — that would double-count.
+     */
     @Async
     public void trackConversion(String converterType) {
         if (converterType == null || converterType.isBlank()) {
@@ -104,35 +101,18 @@ public class AnalyticsService {
             return;
         }
         try {
-            doTrackConversion(converterType);
+            analyticsWriter.writeConversion(converterType);
+            log.debug("Conversion tracked for type=[{}]", converterType);
         } catch (Exception e) {
-            log.error("Failed to track conversion for type [{}]: {}", converterType, e.getMessage(), e);
+            log.error("Failed to track conversion for type=[{}]: {}", converterType, e.getMessage(), e);
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void doTrackConversion(String converterType) {
-        analyticsRepository.incrementTotalConversions();
-        log.debug("Total conversions incremented for type [{}]", converterType);
-
-        int updated = toolStatRepository.incrementCount(converterType);
-        if (updated == 0) {
-            // Tool not seeded yet (shouldn't normally happen after @PostConstruct)
-            log.warn("Tool stat not found for [{}], creating new entry", converterType);
-            ToolStat stat = new ToolStat(converterType);
-            stat.setCount(1);
-            toolStatRepository.save(stat);
-        } else {
-            log.debug("Tool stat incremented for [{}]", converterType);
-        }
-    }
-
-    // ─── Get Stats ───────────────────────────────────────────────────────────
+    // ─── Get Stats ────────────────────────────────────────────────────────────
 
     public AnalyticsStatsResponse getStats() {
         try {
             Analytics analytics = analyticsRepository.findById(1L).orElse(new Analytics());
-
             long visits      = analytics.getTotalVisits();
             long conversions = analytics.getTotalConversions();
             long unique      = analytics.getUniqueVisitors();
@@ -142,7 +122,6 @@ public class AnalyticsService {
 
             log.debug("Stats fetched: visits={}, conversions={}, unique={}, rate={}%",
                     visits, conversions, unique, rate);
-
             return AnalyticsStatsResponse.success(visits, conversions, unique, rate);
         } catch (Exception e) {
             log.error("Error fetching analytics stats: {}", e.getMessage(), e);
@@ -154,5 +133,53 @@ public class AnalyticsService {
         List<ToolStat> stats = toolStatRepository.findAllByOrderByCountDesc();
         log.debug("Fetched {} tool stats", stats.size());
         return stats;
+    }
+
+    // ─── Inner Writer Component ───────────────────────────────────────────────
+
+    /**
+     * Separate Spring component that owns the @Transactional DB writes.
+     *
+     * WHY: When AnalyticsService calls its own @Transactional method (self-call),
+     * Spring's AOP proxy is bypassed — @Transactional is silently ignored and
+     * Hibernate throws "TransactionRequiredException: Executing an update/delete query".
+     *
+     * By delegating to THIS separate bean, the call goes through Spring's proxy
+     * and @Transactional works correctly every time.
+     */
+    @Component
+    @RequiredArgsConstructor
+    @Slf4j
+    public static class AnalyticsWriter {
+
+        private final AnalyticsRepository analyticsRepository;
+        private final ToolStatRepository toolStatRepository;
+
+        @Transactional
+        public void writeVisit(boolean isNewUniqueVisitor) {
+            analyticsRepository.incrementTotalVisits();
+            log.debug("DB: total_visits incremented");
+
+            if (isNewUniqueVisitor) {
+                analyticsRepository.incrementUniqueVisitors();
+                log.debug("DB: unique_visitors incremented");
+            }
+        }
+
+        @Transactional
+        public void writeConversion(String converterType) {
+            analyticsRepository.incrementTotalConversions();
+            log.debug("DB: total_conversions incremented");
+
+            int updated = toolStatRepository.incrementCount(converterType);
+            if (updated == 0) {
+                log.warn("Tool stat row missing for [{}], inserting on the fly", converterType);
+                ToolStat stat = new ToolStat(converterType);
+                stat.setCount(1);
+                toolStatRepository.save(stat);
+            } else {
+                log.debug("DB: tool_stats[{}] incremented", converterType);
+            }
+        }
     }
 }

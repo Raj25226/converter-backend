@@ -1,14 +1,20 @@
 server:
   port: 8080
-  servlet:
-    multipart:
-      max-file-size: 50MB
-      max-request-size: 55MB
   error:
     include-message: always
     include-binding-errors: always
 
 spring:
+  # ── Multipart upload limits ────────────────────────────────────────────────
+  # ✅ Must be under spring.servlet.multipart — NOT server.servlet.multipart
+  # When placed under server.*, Spring Boot ignores it and defaults to 1MB,
+  # causing MaxUploadSizeExceededException for any file larger than 1MB.
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 55MB
+
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://trolley.proxy.rlwy.net:44659/railway?sslmode=require}
     driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
