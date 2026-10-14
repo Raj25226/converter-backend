@@ -36,18 +36,21 @@ public class ConversionService {
     private final AnalyticsService analyticsService;
     private final Path outputPath;
     private final QuotaService quotaService;
-    private final java.util.concurrent.Semaphore slots = new java.util.concurrent.Semaphore(2);
+    private final java.util.concurrent.Semaphore slots;
 
     @Value("${app.backend-download-url}")
     private String downloadBaseUrl;
 
-    @Value("${file.expiry-minutes:30}")
+    @Value("${file.max-size-mb}")
+    private int maxFileSizeMb;
+
+    @Value("${file.expiry-minutes}")
     private int expiryMinutes;
 
-    @Value("${conversion.guest-daily-limit:2}")
+    @Value("${conversion.guest-daily-limit}")
     private int guestDailyLimit;
 
-    @Value("${conversion.user-daily-limit:10}")
+    @Value("${conversion.user-daily-limit}")
     private int userDailyLimit;
 
     // Explicit constructor because @Qualifier on fields doesn't work with @RequiredArgsConstructor
@@ -55,7 +58,8 @@ public class ConversionService {
                              ConversionRepository conversionRepository,
                              UserRepository userRepository,
                              AnalyticsService analyticsService,
-                             @Qualifier("outputPath") Path outputPath, QuotaService quotaService) {
+                             @Qualifier("outputPath") Path outputPath, QuotaService quotaService, com.converter.conversion.ConversionSettings settings) {
+        this.slots = new java.util.concurrent.Semaphore(settings.getMaxConcurrent());
         this.quotaService = quotaService;
         this.fileConversionService = fileConversionService;
         this.conversionRepository  = conversionRepository;
@@ -128,7 +132,6 @@ public class ConversionService {
 
     // ─── Core conversion orchestrator ────────────────────────────────────────
 
-    @Transactional
     public ConversionResponse doConvert(MultipartFile file,
                                         Long userId,
                                         String sessionId,
@@ -146,79 +149,85 @@ public class ConversionService {
             throw new ConversionException("No file uploaded. Please select a file and try again.");
         }
 
-        if (file.getSize() > 50L * 1024 * 1024) {
+        if (file.getSize() > maxFileSizeMb * 1024L * 1024) {
             log.warn("Conversion rejected: file too large ({} bytes) for type=[{}]",
                     file.getSize(), converterType);
-            throw new ConversionException("File size exceeds the 50MB limit.");
+            throw new AppException("File size exceeds the " + maxFileSizeMb + "MB limit.", HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
         if (!slots.tryAcquire()) throw new AppException("Conversion workers are busy. Please try again shortly.", HttpStatus.SERVICE_UNAVAILABLE);
         try {
-        quotaService.reserve(userId, ip, userId == null ? guestDailyLimit : userDailyLimit);
+            quotaService.reserve(userId, ip, userId == null ? guestDailyLimit : userDailyLimit);
 
-        long startMs = System.currentTimeMillis();
+            long startMs = System.currentTimeMillis();
 
-        FileConversionService.ConvertedFile result;
-        try {
-            result = converter.apply(file);
-        } catch (ConversionException ce) {
-            log.warn("Conversion failed [{}]: {}", converterType, ce.getMessage());
-            throw ce;
-        } catch (IOException ioe) {
-            log.error("IO error during [{}] conversion of file [{}]",
-                    converterType, file.getOriginalFilename(), ioe);
-            throw new ConversionException("Conversion failed while processing the file. Please try again.");
-        } catch (Exception e) {
-            log.error("Unexpected error during [{}] conversion of file [{}]",
-                    converterType, file.getOriginalFilename(), e);
-            throw new ConversionException("An unexpected error occurred during conversion. Please try again.");
-        }
+            FileConversionService.ConvertedFile result;
+            try {
+                result = converter.apply(file);
+            } catch (ConversionException ce) {
+                log.warn("Conversion failed [{}]: {}", converterType, ce.getMessage());
+                throw ce;
+            } catch (AppException ae) {
+                throw ae;
+            } catch (IOException ioe) {
+                log.error("IO error during [{}] conversion of file [{}]",
+                        converterType, file.getOriginalFilename(), ioe);
+                throw new ConversionException("Conversion failed while processing the file. Please try again.");
+            } catch (Exception e) {
+                log.error("Unexpected error during [{}] conversion of file [{}]",
+                        converterType, file.getOriginalFilename(), e);
+                throw new ConversionException("An unexpected error occurred during conversion. Please try again.");
+            }
 
-        if (!Files.exists(result.path()) || result.path().toFile().length() == 0) {
-            log.error("Conversion produced empty output for type=[{}], file=[{}]",
-                    converterType, file.getOriginalFilename());
-            throw new ConversionException("Conversion produced an empty output file. The input file may be corrupted.");
-        }
+            if (!Files.exists(result.path()) || result.path().toFile().length() == 0) {
+                log.error("Conversion produced empty output for type=[{}], file=[{}]",
+                        converterType, file.getOriginalFilename());
+                try { Files.deleteIfExists(result.path()); } catch (IOException e) { log.warn("Could not remove empty output", e); }
+                throw new ConversionException("Conversion produced an empty output file. The input file may be corrupted.");
+            }
 
-        long durationMs = System.currentTimeMillis() - startMs;
-        long outputSize = result.path().toFile().length();
+            long durationMs = System.currentTimeMillis() - startMs;
+            long outputSize = result.path().toFile().length();
 
-        // Persist conversion record
-        Instant expiresAt = Instant.now().plus(expiryMinutes, ChronoUnit.MINUTES);
-        Conversion record = new Conversion();
-        record.setConverterType(converterType);
-        record.setOriginalFileName(file.getOriginalFilename());
-        record.setConvertedFileName(result.outputName());
-        record.setFileId(result.fileId());
-        record.setFileSize(outputSize);
-        record.setSessionId(sessionId);
-        record.setExpiresAt(expiresAt);
-        record.setIpAddress(ip);
+            // Persist conversion record
+            Instant expiresAt = Instant.now().plus(expiryMinutes, ChronoUnit.MINUTES);
+            Conversion record = new Conversion();
+            record.setConverterType(converterType);
+            record.setOriginalFileName(com.converter.conversion.UploadValidation.displayName(file));
+            record.setConvertedFileName(result.outputName());
+            record.setFileId(result.fileId());
+            record.setFileSize(outputSize);
+            record.setSessionId(sessionId == null ? null : sessionId.substring(0, Math.min(255, sessionId.length())));
+            record.setExpiresAt(expiresAt);
+            record.setIpAddress(ip);
 
-        if (userId != null) {
-            userRepository.findById(userId).ifPresentOrElse(
-                    record::setUser,
-                    () -> log.warn("User id=[{}] not found when saving conversion record", userId)
+            if (userId != null) {
+                userRepository.findById(userId).ifPresentOrElse(
+                        record::setUser,
+                        () -> log.warn("User id=[{}] not found when saving conversion record", userId)
+                );
+            }
+            try { conversionRepository.saveAndFlush(record); }
+            catch (RuntimeException e) {
+                try { Files.deleteIfExists(result.path()); } catch (IOException cleanup) { log.warn("Output cleanup failed", cleanup); }
+                throw e;
+            }
+
+            // ✅ Track analytics ONCE — only here, never in AnalyticsController.trackConversion()
+            try { analyticsService.trackConversion(converterType); }
+            catch (RuntimeException e) { log.warn("Analytics scheduling failed after successful conversion", e); }
+
+            log.info("Conversion SUCCESS: type=[{}], file=[{}] → [{}], size=[{}] bytes, duration=[{}ms]",
+                    converterType, file.getOriginalFilename(), result.outputName(), outputSize, durationMs);
+
+            var response = ConversionResponse.success(
+                    downloadBaseUrl + result.fileId(),
+                    result.outputName(),
+                    expiresAt,
+                    outputSize
             );
-        }
-        try { conversionRepository.save(record); }
-        catch (RuntimeException e) {
-            try { Files.deleteIfExists(result.path()); } catch (IOException cleanup) { log.warn("Output cleanup failed", cleanup); }
-            throw e;
-        }
-
-        // ✅ Track analytics ONCE — only here, never in AnalyticsController.trackConversion()
-        analyticsService.trackConversion(converterType);
-
-        log.info("Conversion SUCCESS: type=[{}], file=[{}] → [{}], size=[{}] bytes, duration=[{}ms]",
-                converterType, file.getOriginalFilename(), result.outputName(), outputSize, durationMs);
-
-        return ConversionResponse.success(
-                downloadBaseUrl + result.fileId(),
-                result.outputName(),
-                expiresAt,
-                outputSize
-        );
+            response.setWarnings(result.warnings());
+            return response;
         } finally { slots.release(); }
     }
 

@@ -37,7 +37,7 @@ public class FileController {
         log.info("Download request for fileId=[{}]", fileId);
 
         // Basic validation — reject anything that looks like path traversal
-        if (fileId == null || fileId.isBlank() || fileId.contains("..") || fileId.contains("/")) {
+        if (fileId == null || !fileId.matches("[a-f0-9]{32}")) {
             log.warn("Download rejected: invalid fileId=[{}]", fileId);
             return ResponseEntity.badRequest().build();
         }
@@ -56,7 +56,7 @@ public class FileController {
         File file = null;
         if (!ext.isEmpty()) {
             File candidate = outputPath.resolve(fileId + "." + ext).toFile();
-            if (candidate.exists()) {
+            if (java.nio.file.Files.isRegularFile(candidate.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 file = candidate;
                 log.debug("Found file by primary extension: {}.{}", fileId, ext);
             }
@@ -66,7 +66,7 @@ public class FileController {
         if (file == null) {
             for (String tryExt : new String[]{"pdf","docx","xlsx","pptx","png","jpg","webp","mp3","gif","zip","gz"}) {
                 File candidate = outputPath.resolve(fileId + "." + tryExt).toFile();
-                if (candidate.exists()) {
+                if (java.nio.file.Files.isRegularFile(candidate.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                     file = candidate;
                     ext  = tryExt;
                     log.debug("Found file by fallback extension: {}.{}", fileId, tryExt);
@@ -89,7 +89,7 @@ public class FileController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header("X-Content-Type-Options", "nosniff")
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFilename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment().filename(safeFilename, java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(file.length())
                 .body(new FileSystemResource(file));
@@ -135,6 +135,6 @@ public class FileController {
     /** Remove characters that could cause issues in Content-Disposition header. */
     private String sanitizeFilename(String name) {
         if (name == null || name.isBlank()) return "download";
-        return name.replaceAll("[^a-zA-Z0-9._\\-]", "_");
+        return org.apache.commons.io.FilenameUtils.getName(name).replaceAll("[\\p{Cntrl}]", "_");
     }
 }

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+@lombok.extern.slf4j.Slf4j
 @Configuration
 public class FileStorageConfig {
 
@@ -22,6 +23,7 @@ public class FileStorageConfig {
     public Path uploadPath() throws IOException {
         Path path = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(path);
+        log.info("Storage directory ready: {}", path);
         return path;
     }
 
@@ -29,6 +31,7 @@ public class FileStorageConfig {
     public Path outputPath() throws IOException {
         Path path = Paths.get(outputDir).toAbsolutePath().normalize();
         Files.createDirectories(path);
+        log.info("Storage directory ready: {}", path);
         return path;
     }
 }

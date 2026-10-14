@@ -13,8 +13,8 @@ import java.util.Map;
 public class QuotaController {
     private final QuotaService quotas;
     private final IpUtil ips;
-    @Value("${conversion.guest-daily-limit:2}") private int guestLimit;
-    @Value("${conversion.user-daily-limit:10}") private int userLimit;
+    @Value("${conversion.guest-daily-limit}") private int guestLimit;
+    @Value("${conversion.user-daily-limit}") private int userLimit;
     public QuotaController(QuotaService quotas, IpUtil ips) { this.quotas = quotas; this.ips = ips; }
     @GetMapping("/quota")
     public Map<String, Integer> quota(Authentication auth, HttpServletRequest request) {

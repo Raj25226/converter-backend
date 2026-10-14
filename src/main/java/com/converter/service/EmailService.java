@@ -13,10 +13,15 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
+    @org.springframework.beans.factory.annotation.Value("${auth.verification-expiry-hours}")
+    private long verificationExpiryHours;
+    @org.springframework.beans.factory.annotation.Value("${auth.reset-expiry-hours}")
+    private long resetExpiryHours;
+
 
     private final JavaMailSender mailSender;
 
-    @Value("${spring.mail.username:noreply@fileconvert.pro}")
+    @Value("${app.mail-from}")
     private String fromEmail;
 
     @Value("${app.frontend-url}")
@@ -28,7 +33,7 @@ public class EmailService {
         String html = buildEmailHtml(
                 "Verify Your Email",
                 "Welcome to FileConvert Pro!",
-                "Please click the button below to verify your email address. This link expires in 24 hours.",
+                "Please click the button below to verify your email address. This link expires in %d hours.".formatted(verificationExpiryHours),
                 link,
                 "Verify Email"
         );
@@ -41,7 +46,7 @@ public class EmailService {
         String html = buildEmailHtml(
                 "Reset Your Password",
                 "Password Reset Request",
-                "You requested a password reset. Click below to set a new password. This link expires in 1 hour. If you didn't request this, ignore this email.",
+                "You requested a password reset. Click below to set a new password. This link expires in %d hours. If you didn't request this, ignore this email.".formatted(resetExpiryHours),
                 link,
                 "Reset Password"
         );
@@ -59,7 +64,7 @@ public class EmailService {
             mailSender.send(message);
             log.info("Email sent to {}", to);
         } catch (Exception e) {
-            log.error("Failed to send email to {}: {}", to, e.getMessage());
+            log.error("Email delivery failed", e);
         }
     }
 

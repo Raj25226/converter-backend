@@ -42,10 +42,24 @@ import java.util.Optional;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+    @Value("${cors.allowed-methods}")
+    private String[] allowedMethods;
+    @Value("${cors.allowed-headers}")
+    private String[] allowedHeaders;
+    @Value("${cors.exposed-headers}")
+    private String[] exposedHeaders;
+    @Value("${cors.allow-credentials}")
+    private boolean allowCredentials;
+
+    @org.springframework.beans.factory.annotation.Value("${auth.password-strength}")
+    private int passwordStrength;
+    @org.springframework.beans.factory.annotation.Value("${cors.max-age-seconds}")
+    private long corsMaxAgeSeconds;
+
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
+        return new BCryptPasswordEncoder(passwordStrength);
     }
 
     @Bean
@@ -54,11 +68,11 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         // Support comma-separated list of origins
         config.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
+        config.setAllowedMethods(Arrays.asList(allowedMethods));
+        config.setAllowedHeaders(Arrays.asList(allowedHeaders));
+        config.setExposedHeaders(Arrays.asList(exposedHeaders));
+        config.setAllowCredentials(allowCredentials);
+        config.setMaxAge(corsMaxAgeSeconds);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

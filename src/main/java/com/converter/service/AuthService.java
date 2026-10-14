@@ -23,6 +23,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
+    @org.springframework.beans.factory.annotation.Value("${auth.verification-expiry-hours}")
+    private long verificationExpiryHours;
+    @org.springframework.beans.factory.annotation.Value("${auth.reset-expiry-hours}")
+    private long resetExpiryHours;
+
 
     private final UserRepository userRepository;
     private final EmailTokenRepository emailTokenRepository;
@@ -54,7 +59,7 @@ public class AuthService {
         user = userRepository.save(user);
 
         String token = generateEmailToken(user, EmailToken.TokenType.VERIFY_EMAIL,
-                Instant.now().plus(24, ChronoUnit.HOURS));
+                Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
         emailService.sendVerificationEmail(user.getEmail(), token);
 
         log.info("Signup successful: userId=[{}] email=[{}]", user.getId(), email);
@@ -168,7 +173,7 @@ public class AuthService {
 
     @Transactional
     public ApiResponse verifyEmail(String token) {
-        log.info("Email verification attempt with token=[{}...]", token.substring(0, Math.min(8, token.length())));
+        log.debug("Email verification requested");
 
         EmailToken emailToken = emailTokenRepository.findByToken(token)
                 .orElseThrow(() -> {
@@ -202,7 +207,7 @@ public class AuthService {
             if (!user.isEmailVerified()) {
                 emailTokenRepository.deleteByUserIdAndType(user.getId(), EmailToken.TokenType.VERIFY_EMAIL);
                 String token = generateEmailToken(user, EmailToken.TokenType.VERIFY_EMAIL,
-                        Instant.now().plus(24, ChronoUnit.HOURS));
+                        Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
                 emailService.sendVerificationEmail(user.getEmail(), token);
                 log.info("Verification email resent to userId=[{}] email=[{}]", user.getId(), email);
             } else {
@@ -223,7 +228,7 @@ public class AuthService {
         userRepository.findByEmail(email).ifPresent(user -> {
             emailTokenRepository.deleteByUserIdAndType(user.getId(), EmailToken.TokenType.RESET_PASSWORD);
             String token = generateEmailToken(user, EmailToken.TokenType.RESET_PASSWORD,
-                    Instant.now().plus(1, ChronoUnit.HOURS));
+                    Instant.now().plus(resetExpiryHours, ChronoUnit.HOURS));
             emailService.sendPasswordResetEmail(user.getEmail(), token);
             log.info("Password reset email sent to userId=[{}] email=[{}]", user.getId(), email);
         });
@@ -233,8 +238,7 @@ public class AuthService {
 
     @Transactional
     public ApiResponse resetPassword(ResetPasswordRequest req) {
-        log.info("Password reset attempt with token=[{}...]",
-                req.getToken().substring(0, Math.min(8, req.getToken().length())));
+        log.debug("Password reset requested");
 
         EmailToken emailToken = emailTokenRepository.findByToken(req.getToken())
                 .orElseThrow(() -> {
@@ -289,7 +293,7 @@ public class AuthService {
                 user.setEmailVerified(false);
                 emailTokenRepository.deleteByUserIdAndType(userId, EmailToken.TokenType.VERIFY_EMAIL);
                 String token = generateEmailToken(user, EmailToken.TokenType.VERIFY_EMAIL,
-                        Instant.now().plus(24, ChronoUnit.HOURS));
+                        Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
                 emailService.sendVerificationEmail(newEmail, token);
                 log.info("Email changed for userId=[{}]: new verification email sent to [{}]", userId, newEmail);
             }

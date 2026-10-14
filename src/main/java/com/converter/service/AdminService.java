@@ -22,6 +22,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class AdminService {
+    @org.springframework.beans.factory.annotation.Value("${admin.max-page-size}")
+    private int maxPageSize;
+
 
     private final UserRepository userRepository;
     private final AnalyticsService analyticsService;
@@ -65,7 +68,7 @@ public class AdminService {
     }
 
     public UserPageResponse getUsers(int limit, int offset, String search) {
-        limit = Math.min(Math.max(limit, 1), 100);
+        limit = Math.min(Math.max(limit, 1), maxPageSize);
         offset = Math.max(0, offset);
         int page = offset / limit;
 

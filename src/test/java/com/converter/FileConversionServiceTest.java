@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FileConversionServiceTest {
     @TempDir Path directory;
-    private FileConversionService service() { return new FileConversionService(directory); }
+    private FileConversionService service() { return TestSettings.service(directory); }
     private MockMultipartFile file(String name, String mime, byte[] bytes) { return new MockMultipartFile("file", name, mime, bytes); }
     private byte[] pdf() throws Exception {
         try (var pdf = new PDDocument(); var bytes = new ByteArrayOutputStream()) {
@@ -36,8 +36,41 @@ class FileConversionServiceTest {
     }
     @Test void pdfToWordProducesReadableDocument() throws Exception {
         var result = service().pdfToWord(file("a.pdf", "application/pdf", pdf()));
-        try (var doc = new XWPFDocument(Files.newInputStream(result.path()))) {
-            assertTrue(doc.getParagraphs().stream().anyMatch(p -> p.getText().contains("Amount")));
+        var doc = DocxContent.read(result.path());
+        assertTrue(DocxContent.runs(doc).stream().anyMatch(r -> DocxContent.text(r).contains("Amount")));
+    }
+    @Test void pdfToWordRetainsMixedFontsAndPageBreaks() throws Exception {
+        byte[] source;
+        try (var pdf = new PDDocument(); var bytes = new ByteArrayOutputStream()) {
+            for (int index = 0; index < 2; index++) {
+                var page = new PDPage(); pdf.addPage(page);
+                try (var stream = new PDPageContentStream(pdf, page)) {
+                    stream.beginText(); stream.newLineAtOffset(50, 700);
+                    stream.setFont(new PDType1Font(Standard14Fonts.FontName.TIMES_BOLD_ITALIC), 24);
+                    stream.showText("Heading ");
+                    stream.setFont(new PDType1Font(Standard14Fonts.FontName.COURIER), 11);
+                    stream.showText("body text"); stream.endText();
+                }
+            }
+            pdf.save(bytes); source = bytes.toByteArray();
+        }
+        var result = service().pdfToWord(file("styled.pdf", "application/pdf", source));
+        var doc = DocxContent.read(result.path());
+        var runs = DocxContent.runs(doc);
+        assertTrue(runs.stream().anyMatch(r -> DocxContent.text(r).contains("Heading")
+                && DocxContent.attribute(r, "rFonts", "ascii").startsWith("Times")
+                && DocxContent.enabled(r, "b") && DocxContent.enabled(r, "i")
+                && DocxContent.attribute(r, "sz", "val").equals("48")));
+        assertTrue(runs.stream().anyMatch(r -> DocxContent.text(r).contains("body text")
+                && DocxContent.attribute(r, "rFonts", "ascii").startsWith("Courier")
+                && !DocxContent.enabled(r, "b") && !DocxContent.enabled(r, "i")
+                && DocxContent.attribute(r, "sz", "val").equals("22")));
+        var rendered = service().wordToPdf(file("converted.docx", "application/octet-stream", Files.readAllBytes(result.path())));
+        try (var pdf = Loader.loadPDF(rendered.path().toFile())) {
+            assertEquals(2, pdf.getNumberOfPages());
+            var text = new org.apache.pdfbox.text.PDFTextStripper().getText(pdf);
+            assertEquals(2, text.split("Heading", -1).length - 1);
+            assertEquals(2, text.split("body text", -1).length - 1);
         }
     }
     @Test void pdfToExcelProducesWorkbook() throws Exception {

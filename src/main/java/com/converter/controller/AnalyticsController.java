@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @Slf4j
 public class AnalyticsController {
+    @org.springframework.beans.factory.annotation.Value("${analytics.requests-per-window}")
+    private int requestLimit;
+
 
     private final AnalyticsService analyticsService;
     private final com.converter.service.QuotaService quotas;
@@ -34,7 +37,7 @@ public class AnalyticsController {
             HttpServletRequest httpReq) {
         log.debug("Track visit: session=[{}], page=[{}], ip=[{}]",
                 req.getSessionId(), req.getPage(), httpReq.getRemoteAddr());
-        quotas.reserveRequest(ips.getClientIp(httpReq), "visit", 30);
+        quotas.reserveRequest(ips.getClientIp(httpReq), "visit", requestLimit);
         analyticsService.trackVisit(req.getSessionId());
         return ResponseEntity.ok(ApiResponse.success("Visit tracked"));
     }

@@ -29,8 +29,8 @@ public class AdminController {
     // GET /api/admin/users?limit=20&offset=0&search=
     @GetMapping("/users")
     public ResponseEntity<UserPageResponse> getUsers(
-            @RequestParam(defaultValue = "20") int limit,
-            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "${admin.default-page-size}") int limit,
+            @RequestParam(defaultValue = "${admin.default-offset}") int offset,
             @RequestParam(required = false) String search) {
         return ResponseEntity.ok(adminService.getUsers(limit, offset, search));
     }

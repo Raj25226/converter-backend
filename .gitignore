@@ -47,3 +47,6 @@ uploads/
 .env.*
 !.env.example
 outputs/
+
+# Local development storage
+var/

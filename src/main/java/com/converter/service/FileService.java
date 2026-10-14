@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class FileService {
 
@@ -24,6 +25,7 @@ public class FileService {
                 throw new SecurityException("Invalid file path");
             }
         } catch (Exception e) {
+            log.warn("File lookup rejected or failed", e);
             return null;
         }
 

@@ -18,6 +18,11 @@ import java.util.List;
 @Service
 @Slf4j
 public class FileCleanupService {
+    @org.springframework.beans.factory.annotation.Value("${file.history-retention-days}")
+    private long historyRetentionDays;
+    @org.springframework.beans.factory.annotation.Value("${file.orphan-grace-minutes}")
+    private long orphanGraceMinutes;
+
 
     private static final List<String> KNOWN_EXTENSIONS =
             List.of("pdf", "docx", "xlsx", "pptx", "png", "jpg", "jpeg", "webp", "mp3", "gif", "zip", "gz");
@@ -25,7 +30,7 @@ public class FileCleanupService {
     private final ConversionRepository conversionRepository;
     private final EmailTokenRepository emailTokenRepository;
     private final Path outputPath;
-    @org.springframework.beans.factory.annotation.Value("${file.expiry-minutes:30}")
+    @org.springframework.beans.factory.annotation.Value("${file.expiry-minutes}")
     private int expiryMinutes;
 
     public FileCleanupService(ConversionRepository conversionRepository,
@@ -40,7 +45,7 @@ public class FileCleanupService {
      * Runs every 60 seconds.
      * Deletes expired files, retaining history for 30 days.
      */
-    @Scheduled(fixedDelayString = "${file.cleanup-interval-ms:60000}")
+    @Scheduled(fixedDelayString = "${file.cleanup-interval-ms}")
     @Transactional
     public void cleanupExpiredFiles() {
         Instant now = Instant.now();
@@ -50,7 +55,7 @@ public class FileCleanupService {
         log.info("File cleanup: found {} expired conversion records", expired.size());
 
         int filesDeleted = 0;
-        int filesNotFound = 0;
+
 
         for (Conversion conv : expired) {
             if (conv.getFileId() == null) continue;
@@ -71,18 +76,18 @@ public class FileCleanupService {
             if (removed) conv.setFileId(null);
         }
 
-        int deletedRecords = conversionRepository.deleteExpiredConversions(now.minus(30, java.time.temporal.ChronoUnit.DAYS));
+        int deletedRecords = conversionRepository.deleteExpiredConversions(now.minus(historyRetentionDays, java.time.temporal.ChronoUnit.DAYS));
         log.info("File cleanup complete: deleted {} physical files, {} DB records", filesDeleted, deletedRecords);
     }
 
     // Reclaim orphaned outputs and work directories after expiry plus a processing grace period.
-    @Scheduled(fixedDelay = 3_600_000)
+    @Scheduled(fixedDelayString = "${file.orphan-cleanup-interval-ms}")
     public void cleanupOrphans() {
-        Instant cutoff = Instant.now().minus(expiryMinutes + 10L, java.time.temporal.ChronoUnit.MINUTES);
+        Instant cutoff = Instant.now().minus(expiryMinutes + orphanGraceMinutes, java.time.temporal.ChronoUnit.MINUTES);
         try (var entries = Files.list(outputPath)) {
             for (Path entry : entries.toList()) {
                 String name = entry.getFileName().toString();
-                if (!(name.matches("[a-f0-9]{32}\\.[a-zA-Z0-9]+") || name.startsWith("office-"))) continue;
+                if (!(name.matches("[a-f0-9]{32}\\.[a-zA-Z0-9]+") || (name.startsWith("office-") || name.startsWith("work-")))) continue;
                 if (!Files.getLastModifiedTime(entry, java.nio.file.LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)) continue;
                 try (var paths = Files.walk(entry)) {
                     for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
@@ -95,7 +100,7 @@ public class FileCleanupService {
      * Runs every hour.
      * Removes expired email tokens (verification + password reset) to keep the table clean.
      */
-    @Scheduled(fixedDelay = 3_600_000)
+    @Scheduled(fixedDelayString = "${auth.token-cleanup-interval-ms}")
     @Transactional
     public void cleanupExpiredTokens() {
         log.debug("Token cleanup: starting");

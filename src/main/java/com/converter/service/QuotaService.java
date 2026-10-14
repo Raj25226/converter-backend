@@ -11,7 +11,13 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 
 @Service
+@lombok.extern.slf4j.Slf4j
 public class QuotaService {
+    @org.springframework.beans.factory.annotation.Value("${quota.request-window-seconds}")
+    private long requestWindowSeconds;
+    @org.springframework.beans.factory.annotation.Value("${quota.retention-days}")
+    private long retentionDays;
+
     private final JdbcTemplate jdbc;
     public QuotaService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
@@ -26,9 +32,9 @@ public class QuotaService {
         reserveKey(key(userId, ip), limit);
     }
     public void reserveRequest(String ip, String scope, int limit) {
-        String bucket = scope + ":" + key(null, ip + ":" + java.time.Instant.now().getEpochSecond() / 60).substring(6);
+        String bucket = scope + ":" + key(null, ip + ":" + java.time.Instant.now().getEpochSecond() / requestWindowSeconds).substring(6);
         try { reserveKey(bucket, limit); }
-        catch (RateLimitException e) { throw new RateLimitException("Too many requests. Please wait one minute and try again."); }
+        catch (RateLimitException e) { throw new RateLimitException("Too many requests. Please retry after the request window resets."); }
     }
     private void reserveKey(String id, int limit) {
         // PostgreSQL atomically reserves attempts across simultaneous requests and replicas.
@@ -38,15 +44,19 @@ public class QuotaService {
                 attempts = CASE WHEN daily_usage.day = EXCLUDED.day THEN daily_usage.attempts + 1 ELSE 1 END
             WHERE daily_usage.day <> EXCLUDED.day OR daily_usage.attempts < ?
             """, id, LocalDate.now(ZoneOffset.UTC), limit);
-        if (changed == 0) throw new RateLimitException("Daily limit reached. Limits reset at midnight UTC.");
+        if (changed == 0) {
+            log.warn("Quota exhausted for bucket type {} with limit {}", id.substring(0, id.indexOf(':')), limit);
+            throw new RateLimitException("Daily limit reached. Limits reset at midnight UTC.");
+        }
     }
     public int used(Long userId, String ip) {
         var counts = jdbc.queryForList("SELECT attempts FROM daily_usage WHERE id = ? AND day = ?",
                 Integer.class, key(userId, ip), LocalDate.now(ZoneOffset.UTC));
         return counts.isEmpty() ? 0 : counts.get(0);
     }
-    @Scheduled(fixedDelay = 3600000)
+    @Scheduled(fixedDelayString = "${quota.cleanup-interval-ms}")
     public void cleanup() {
-        jdbc.update("DELETE FROM daily_usage WHERE day < ?", LocalDate.now(ZoneOffset.UTC).minusDays(2));
+        int removed = jdbc.update("DELETE FROM daily_usage WHERE day < ?", LocalDate.now(ZoneOffset.UTC).minusDays(retentionDays));
+        log.debug("Quota cleanup removed {} buckets", removed);
     }
 }

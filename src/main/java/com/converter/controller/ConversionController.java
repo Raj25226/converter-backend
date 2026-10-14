@@ -22,7 +22,7 @@ public class ConversionController {
 
     // ─── Documents ───────────────────────────────────────────────────────────
 
-    @PostMapping("/pdf-to-word")
+    @PostMapping(value = "/pdf-to-word", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> pdfToWord(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -31,7 +31,7 @@ public class ConversionController {
         return ok(conversionService.pdfToWord(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/word-to-pdf")
+    @PostMapping(value = "/word-to-pdf", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> wordToPdf(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -40,7 +40,7 @@ public class ConversionController {
         return ok(conversionService.wordToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/pdf-to-excel")
+    @PostMapping(value = "/pdf-to-excel", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> pdfToExcel(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -49,7 +49,7 @@ public class ConversionController {
         return ok(conversionService.pdfToExcel(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/excel-to-pdf")
+    @PostMapping(value = "/excel-to-pdf", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> excelToPdf(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -58,7 +58,7 @@ public class ConversionController {
         return ok(conversionService.excelToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/ppt-to-pdf")
+    @PostMapping(value = "/ppt-to-pdf", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> pptToPdf(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -69,7 +69,7 @@ public class ConversionController {
 
     // ─── Images ──────────────────────────────────────────────────────────────
 
-    @PostMapping("/jpg-to-png")
+    @PostMapping(value = "/jpg-to-png", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> jpgToPng(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -78,7 +78,7 @@ public class ConversionController {
         return ok(conversionService.jpgToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/png-to-jpg")
+    @PostMapping(value = "/png-to-jpg", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> pngToJpg(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -87,7 +87,7 @@ public class ConversionController {
         return ok(conversionService.pngToJpg(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/jpg-to-webp")
+    @PostMapping(value = "/jpg-to-webp", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> jpgToWebp(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -96,7 +96,7 @@ public class ConversionController {
         return ok(conversionService.jpgToWebp(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/webp-to-png")
+    @PostMapping(value = "/webp-to-png", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> webpToPng(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -105,7 +105,7 @@ public class ConversionController {
         return ok(conversionService.webpToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/heic-to-jpg")
+    @PostMapping(value = "/heic-to-jpg", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> heicToJpg(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -116,7 +116,7 @@ public class ConversionController {
 
     // ─── Media ───────────────────────────────────────────────────────────────
 
-    @PostMapping("/mp4-to-mp3")
+    @PostMapping(value = "/mp4-to-mp3", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> mp4ToMp3(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -125,7 +125,7 @@ public class ConversionController {
         return ok(conversionService.mp4ToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/mp4-to-gif")
+    @PostMapping(value = "/mp4-to-gif", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> mp4ToGif(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -134,7 +134,7 @@ public class ConversionController {
         return ok(conversionService.mp4ToGif(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/wav-to-mp3")
+    @PostMapping(value = "/wav-to-mp3", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> wavToMp3(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -145,7 +145,7 @@ public class ConversionController {
 
     // ─── Utilities ───────────────────────────────────────────────────────────
 
-    @PostMapping("/zip-extract")
+    @PostMapping(value = "/zip-extract", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> zipExtract(
             @RequestParam("file") MultipartFile file,
             Authentication auth,
@@ -154,7 +154,7 @@ public class ConversionController {
         return ok(conversionService.zipExtract(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
-    @PostMapping("/file-compress")
+    @PostMapping(value = "/file-compress", consumes = "multipart/form-data")
     public ResponseEntity<ConversionResponse> fileCompress(
             @RequestParam("file") MultipartFile file,
             Authentication auth,

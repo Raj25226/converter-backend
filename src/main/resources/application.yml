@@ -1,25 +1,25 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
   error:
-    include-message: never
-    include-binding-errors: never
+    include-message: ${SERVER_ERROR_INCLUDE_MESSAGE:never}
+    include-binding-errors: ${SERVER_ERROR_INCLUDE_BINDING_ERRORS:never}
 
 spring:
   task:
     execution:
       pool:
-        core-size: 2
-        max-size: 4
-        queue-capacity: 100
+        core-size: ${SPRING_TASK_EXECUTION_POOL_CORE_SIZE:2}
+        max-size: ${SPRING_TASK_EXECUTION_POOL_MAX_SIZE:4}
+        queue-capacity: ${SPRING_TASK_EXECUTION_POOL_QUEUE_CAPACITY:100}
   # ── Multipart upload limits ────────────────────────────────────────────────
   # ✅ Must be under spring.servlet.multipart — NOT server.servlet.multipart
   # When placed under server.*, Spring Boot ignores it and defaults to 1MB,
   # causing MaxUploadSizeExceededException for any file larger than 1MB.
   servlet:
     multipart:
-      enabled: true
-      max-file-size: 50MB
-      max-request-size: 55MB
+      enabled: ${SPRING_SERVLET_MULTIPART_ENABLED:true}
+      max-file-size: ${MAX_FILE_SIZE_MB:50}MB
+      max-request-size: ${MAX_REQUEST_SIZE_MB:55}MB
 
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/unimorpher}
@@ -27,46 +27,46 @@ spring:
     username: ${DB_USERNAME:admin}
     password: ${DB_PASSWORD:admin}
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:20}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:5}
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT:600000}
+      max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:1800000}
 
   jpa:
     hibernate:
-      ddl-auto: validate
-    show-sql: false
-    open-in-view: false
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
+    open-in-view: ${SPRING_JPA_OPEN_IN_VIEW:false}
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
+        dialect: ${SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT:org.hibernate.dialect.PostgreSQLDialect}
+        format_sql: ${SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL:true}
         jdbc:
-          batch_size: 25
-        order_inserts: true
-        order_updates: true
+          batch_size: ${SPRING_JPA_PROPERTIES_HIBERNATE_JDBC_BATCH_SIZE:25}
+        order_inserts: ${SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_INSERTS:true}
+        order_updates: ${SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_UPDATES:true}
 
 
   mail:
     host: ${SMTP_HOST:smtp.gmail.com}
     port: ${SMTP_PORT:587}
-    username: ${SMTP_USERNAME:131}
-    password: ${SMTP_PASSWORD:weqwqw}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
     properties:
       mail:
         smtp:
-          auth: true
+          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
           starttls:
-            enable: true
-            required: true
-          connectiontimeout: 10000
-          timeout: 10000
-          writetimeout: 10000
+            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
+            required: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:true}
+          connectiontimeout: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_CONNECTIONTIMEOUT:10000}
+          timeout: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_TIMEOUT:10000}
+          writetimeout: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_WRITETIMEOUT:10000}
 
 # ── JWT ────────────────────────────────────────────────────────────────────────
 jwt:
-  secret: ${JWT_SECRET:u0SCUjsWo6hqeyP6ScJBSuMe+7M5BfbPPi4MJP3sfYB5W8clTp4sZpcS7GoC7dqdPpxhYlNl5d3NQj1lTz1LbQ==}
+  secret: ${JWT_SECRET:}
   expiration-days: ${JWT_EXPIRY_DAYS:7}
 
 # ── Google OAuth ───────────────────────────────────────────────────────────────
@@ -75,45 +75,132 @@ google:
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 cors:
+  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
+  allowed-headers: ${CORS_ALLOWED_HEADERS:*}
+  exposed-headers: ${CORS_EXPOSED_HEADERS:Authorization,Content-Disposition,X-Request-ID}
+  allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+  max-age-seconds: ${CORS_MAX_AGE_SECONDS:3600}
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 # ── File Storage ───────────────────────────────────────────────────────────────
 file:
+  history-retention-days: ${FILE_HISTORY_RETENTION_DAYS:30}
+  orphan-grace-minutes: ${FILE_ORPHAN_GRACE_MINUTES:10}
+  orphan-cleanup-interval-ms: ${FILE_ORPHAN_CLEANUP_INTERVAL_MS:3600000}
   upload-dir: ${UPLOAD_DIR:/tmp/fileconvert/uploads}
   output-dir: ${OUTPUT_DIR:/tmp/fileconvert/outputs}
   max-size-mb: ${MAX_FILE_SIZE_MB:50}
   expiry-minutes: ${FILE_EXPIRY_MINUTES:30}
-  cleanup-interval-ms: 60000
+  cleanup-interval-ms: ${FILE_CLEANUP_INTERVAL_MS:60000}
 
 # ── App ────────────────────────────────────────────────────────────────────────
 app:
+  mail-from: ${MAIL_FROM:noreply@fileconvert.pro}
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   backend-download-url: ${BACKEND_URL:http://localhost:8080}/api/download/
 
 # ── Conversion Limits ──────────────────────────────────────────────────────────
 conversion:
+  max-pdf-table-columns: ${CONVERSION_MAX_PDF_TABLE_COLUMNS:100}
+  max-pdf-table-rows: ${CONVERSION_MAX_PDF_TABLE_ROWS:100000}
+  table-max-column-width: ${CONVERSION_TABLE_MAX_COLUMN_WIDTH:60}
+  table-min-column-width: ${CONVERSION_TABLE_MIN_COLUMN_WIDTH:12}
+  table-column-padding: ${CONVERSION_TABLE_COLUMN_PADDING:2}
+  table-line-tolerance: ${CONVERSION_TABLE_LINE_TOLERANCE:2.5}
+  table-min-space-width: ${CONVERSION_TABLE_MIN_SPACE_WIDTH:2}
+  table-min-column-gap: ${CONVERSION_TABLE_MIN_COLUMN_GAP:12}
+  table-column-gap-factor: ${CONVERSION_TABLE_COLUMN_GAP_FACTOR:2.5}
+  table-word-gap-factor: ${CONVERSION_TABLE_WORD_GAP_FACTOR:0.6}
+  max-office-relationships-mb: ${CONVERSION_MAX_OFFICE_RELATIONSHIPS_MB:1}
+  native-diagnostic-bytes: ${CONVERSION_NATIVE_DIAGNOSTIC_BYTES:16384}
+  native-poll-interval-ms: ${CONVERSION_NATIVE_POLL_INTERVAL_MS:100}
+  native-drain-timeout-ms: ${CONVERSION_NATIVE_DRAIN_TIMEOUT_MS:1000}
+  native-termination-timeout-seconds: ${CONVERSION_NATIVE_TERMINATION_TIMEOUT_SECONDS:2}
+  native-probe-timeout-ms: ${CONVERSION_NATIVE_PROBE_TIMEOUT_MS:5000}
+  native-health-cache-seconds: ${CONVERSION_NATIVE_HEALTH_CACHE_SECONDS:60}
+  office-vcl-plugin: ${CONVERSION_OFFICE_VCL_PLUGIN:svp}
+  office-min-inflate-ratio: ${CONVERSION_OFFICE_MIN_INFLATE_RATIO:0.001}
+  office-max-entry-mb: ${CONVERSION_OFFICE_MAX_ENTRY_MB:64}
+  office-max-text-mb: ${CONVERSION_OFFICE_MAX_TEXT_MB:10}
+  jpeg-quality: ${CONVERSION_JPEG_QUALITY:92}
+  webp-quality: ${CONVERSION_WEBP_QUALITY:90}
+  compression-jpeg-quality: ${CONVERSION_COMPRESSION_JPEG_QUALITY:75}
+  image-memory-limit: ${CONVERSION_IMAGE_MEMORY_LIMIT:128MiB}
+  image-map-limit: ${CONVERSION_IMAGE_MAP_LIMIT:256MiB}
+  image-disk-limit: ${CONVERSION_IMAGE_DISK_LIMIT:256MiB}
+  native-threads: ${CONVERSION_NATIVE_THREADS:2}
+  filter-threads: ${CONVERSION_FILTER_THREADS:1}
+  audio-bitrate: ${CONVERSION_AUDIO_BITRATE:192k}
+  audio-sample-rate: ${CONVERSION_AUDIO_SAMPLE_RATE:44100}
+  gif-duration-seconds: ${CONVERSION_GIF_DURATION_SECONDS:30}
+  gif-frames-per-second: ${CONVERSION_GIF_FRAMES_PER_SECOND:10}
+  gif-max-dimension: ${CONVERSION_GIF_MAX_DIMENSION:480}
+  ffmpeg-max-allocation-bytes: ${CONVERSION_FFMPEG_MAX_ALLOCATION_BYTES:268435456}
+  archive-max-name-length: ${CONVERSION_ARCHIVE_MAX_NAME_LENGTH:512}
+  document-font-size: ${CONVERSION_DOCUMENT_FONT_SIZE:11}
+  document-font-family: ${CONVERSION_DOCUMENT_FONT_FAMILY:Noto Sans}
+  document-paragraph-spacing: ${CONVERSION_DOCUMENT_PARAGRAPH_SPACING:120}
+  max-concurrent: ${CONVERSION_MAX_CONCURRENT:2}
+  timeout-seconds: ${CONVERSION_TIMEOUT_SECONDS:120}
+  max-output-size-mb: ${CONVERSION_MAX_OUTPUT_MB:200}
+  max-pdf-styles: ${CONVERSION_MAX_PDF_STYLES:1024}
+  max-pdf-pages: ${CONVERSION_MAX_PDF_PAGES:500}
+  max-extracted-characters: ${CONVERSION_MAX_TEXT_CHARACTERS:500000}
+  max-image-pixels: ${CONVERSION_MAX_IMAGE_PIXELS:25000000}
+  max-image-dimension: ${CONVERSION_MAX_IMAGE_DIMENSION:10000}
+  max-spreadsheet-cells: ${CONVERSION_MAX_SPREADSHEET_CELLS:200000}
+  max-office-expanded-mb: ${CONVERSION_MAX_OFFICE_EXPANDED_MB:256}
+  max-zip-entries: ${CONVERSION_MAX_ZIP_ENTRIES:1000}
+  max-zip-entry-mb: ${CONVERSION_MAX_ZIP_ENTRY_MB:100}
+  max-zip-expanded-mb: ${CONVERSION_MAX_ZIP_EXPANDED_MB:500}
+  office-binary: ${LIBREOFFICE_BINARY:soffice}
+  image-srgb-profile: ${IMAGE_SRGB_PROFILE:}
+  image-magick-binary: ${IMAGEMAGICK_BINARY:magick}
+  ffmpeg-binary: ${FFMPEG_BINARY:ffmpeg}
+  ffprobe-binary: ${FFPROBE_BINARY:ffprobe}
+  native-health-enabled: ${CONVERSION_NATIVE_HEALTH_ENABLED:true}
   guest-daily-limit: ${CONVERSION_GUEST_DAILY_LIMIT:2}
   user-daily-limit: ${CONVERSION_USER_DAILY_LIMIT:10}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging:
   level:
-    com.converter: INFO
-    org.springframework.security: WARN
-    org.hibernate.SQL: WARN
-    org.springframework.web: WARN
+    com.converter: ${LOGGING_LEVEL_COM_CONVERTER:INFO}
+    org.springframework.security: ${LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY:WARN}
+    org.hibernate.SQL: ${LOGGING_LEVEL_ORG_HIBERNATE_SQL:WARN}
+    org.springframework.web: ${LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB:WARN}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "${LOGGING_PATTERN_CONSOLE:%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{requestId:-}] %-5level %logger{36} - %msg%n}"
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
   endpoint:
     health:
-      show-details: never
+      show-details: ${MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS:never}
       probes:
-        enabled: true
+        enabled: ${MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED:true}
   health:
     mail:
-      enabled: false
+      enabled: ${MANAGEMENT_HEALTH_MAIL_ENABLED:false}
+
+# Authentication, request throttling, and retention policies.
+auth:
+  password-strength: ${AUTH_PASSWORD_STRENGTH:12}
+  verification-expiry-hours: ${AUTH_VERIFICATION_EXPIRY_HOURS:24}
+  reset-expiry-hours: ${AUTH_RESET_EXPIRY_HOURS:1}
+  requests-per-window: ${AUTH_REQUESTS_PER_WINDOW:20}
+  token-cleanup-interval-ms: ${AUTH_TOKEN_CLEANUP_INTERVAL_MS:3600000}
+analytics:
+  session-cleanup-interval-ms: ${ANALYTICS_SESSION_CLEANUP_INTERVAL_MS:86400000}
+  max-tracked-sessions: ${ANALYTICS_MAX_TRACKED_SESSIONS:100000}
+  requests-per-window: ${ANALYTICS_REQUESTS_PER_WINDOW:30}
+quota:
+  request-window-seconds: ${QUOTA_REQUEST_WINDOW_SECONDS:60}
+  retention-days: ${QUOTA_RETENTION_DAYS:2}
+  cleanup-interval-ms: ${QUOTA_CLEANUP_INTERVAL_MS:3600000}
+admin:
+  max-page-size: ${ADMIN_MAX_PAGE_SIZE:100}
+  default-page-size: ${ADMIN_DEFAULT_PAGE_SIZE:20}
+  default-offset: ${ADMIN_DEFAULT_OFFSET:0}

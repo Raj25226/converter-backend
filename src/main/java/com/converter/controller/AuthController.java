@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthController {
+    @org.springframework.beans.factory.annotation.Value("${auth.requests-per-window}")
+    private int requestLimit;
+
 
     private final AuthService authService;
     private final com.converter.service.QuotaService quotas;
@@ -24,7 +27,7 @@ public class AuthController {
     // POST /api/auth/signup
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse> signup(@Valid @RequestBody SignupRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         ApiResponse response = authService.signup(req);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -32,7 +35,7 @@ public class AuthController {
     // POST /api/auth/login
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         AuthResponse response = authService.login(req);
         return ResponseEntity.ok(response);
     }
@@ -40,7 +43,7 @@ public class AuthController {
     // POST /api/auth/google
     @PostMapping("/google")
     public ResponseEntity<AuthResponse> googleLogin(@Valid @RequestBody GoogleAuthRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         AuthResponse response = authService.googleAuth(req);
         return ResponseEntity.ok(response);
     }
@@ -49,7 +52,7 @@ public class AuthController {
     @PostMapping("/resend-verification")
     public ResponseEntity<ApiResponse> resendVerification(
             @Valid @RequestBody ResendVerificationRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         return ResponseEntity.ok(authService.resendVerification(req));
     }
 
@@ -63,7 +66,7 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         return ResponseEntity.ok(authService.forgotPassword(req));
     }
 
@@ -71,7 +74,7 @@ public class AuthController {
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponse> resetPassword(
             @Valid @RequestBody ResetPasswordRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         return ResponseEntity.ok(authService.resetPassword(req));
     }
 
@@ -80,7 +83,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> updateProfile(
             Authentication auth,
             @Valid @RequestBody UpdateProfileRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         Long userId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(authService.updateProfile(userId, req));
     }
@@ -90,7 +93,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse> changePassword(
             Authentication auth,
             @Valid @RequestBody ChangePasswordRequest req, jakarta.servlet.http.HttpServletRequest httpRequest) {
-        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", 20);
+        quotas.reserveRequest(ips.getClientIp(httpRequest), "auth", requestLimit);
         Long userId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(authService.changePassword(userId, req));
     }

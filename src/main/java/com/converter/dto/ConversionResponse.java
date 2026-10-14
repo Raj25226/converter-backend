@@ -17,6 +17,8 @@ public class ConversionResponse {
     private String fileName;
     private Instant expiresAt;
     private Long fileSize;
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private java.util.List<String> warnings;
 
     public static ConversionResponse success(String downloadUrl, String fileName,
                                              Instant expiresAt, Long fileSize) {

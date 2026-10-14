@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 @Slf4j
 public class AnalyticsService {
+    @org.springframework.beans.factory.annotation.Value("${analytics.max-tracked-sessions}")
+    private int maxTrackedSessions;
 
     private final AnalyticsRepository analyticsRepository;
     private final ToolStatRepository toolStatRepository;
@@ -62,7 +64,7 @@ public class AnalyticsService {
         log.info("Tool stats initialized: {} tools total, {} newly created", ALL_TOOLS.size(), created);
     }
 
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 86_400_000)
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${analytics.session-cleanup-interval-ms}")
     public void clearVisitorCache() { seenSessions.clear(); }
 
     // ─── Track Visit ──────────────────────────────────────────────────────────
@@ -79,7 +81,7 @@ public class AnalyticsService {
             return;
         }
         try {
-            if (seenSessions.size() >= 100_000) seenSessions.clear();
+            if (seenSessions.size() >= maxTrackedSessions) seenSessions.clear();
             boolean isNewSession = seenSessions.putIfAbsent(sessionId, Boolean.TRUE) == null;
             analyticsWriter.writeVisit(isNewSession);
             if (isNewSession) {

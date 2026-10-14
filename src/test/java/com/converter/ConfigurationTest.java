@@ -1,0 +1,45 @@
+package com.converter;
+
+import com.converter.conversion.ConversionSettings;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.ClassPathResource;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.*;
+
+class ConfigurationTest {
+    @Test void yamlSuppliesConversionDefaults() {
+        var settings = TestSettings.settings();
+        assertTrue(settings.getMaxConcurrent() > 0);
+        assertTrue(settings.getNativeDiagnosticBytes() > 0);
+        assertTrue(settings.getJpegQuality() > 0);
+        assertNotNull(settings.getOfficeBinary());
+    }
+
+    @Test void conversionOutputAndResourceSettingsCanBeOverridden() {
+        var source = new MapConfigurationPropertySource(Map.of(
+                "conversion.jpeg-quality", "61",
+                "conversion.gif-duration-seconds", "12",
+                "conversion.native-threads", "3",
+                "conversion.office-binary", "/custom/soffice"));
+        var settings = new Binder(source).bind("conversion", Bindable.of(ConversionSettings.class)).orElseThrow(IllegalStateException::new);
+        assertEquals(61, settings.getJpegQuality());
+        assertEquals(12, settings.getGifDurationSeconds());
+        assertEquals(3, settings.getNativeThreads());
+        assertEquals("/custom/soffice", settings.getOfficeBinary());
+    }
+
+    @Test void devProfileProvidesLocalSettingsAndValidSigningKey() throws Exception {
+        var environment = new StandardEnvironment();
+        for (var source : new YamlPropertySourceLoader().load("dev", new ClassPathResource("application-dev.yml"))) {
+            environment.getPropertySources().addLast(source);
+        }
+        assertTrue(environment.getRequiredProperty("jwt.secret").length() >= 64);
+        assertNotNull(environment.getProperty("spring.mail.host"));
+        assertNotNull(environment.getProperty("file.output-dir"));
+    }
+}

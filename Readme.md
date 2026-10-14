@@ -34,19 +34,27 @@ Configure Google OAuth with the same client ID on both sides and your frontend o
 
 | Tool | Implementation and limits |
 | --- | --- |
-| PDF → Word | Extracts selectable text into DOCX; no OCR or layout reconstruction. |
-| Word → PDF | DOCX paragraphs and tables render as text; legacy DOC uses LibreOffice. |
-| PDF → Excel | Extracts text and heuristically separates table columns; not OCR. |
-| Excel → PDF | XLS/XLSX values render as text; charts and print layouts are not preserved. |
-| PowerPoint → PDF | PPTX slides render as images; legacy PPT uses LibreOffice. |
-| JPG ↔ PNG | ImageIO conversion; transparent PNGs use a white JPEG background. |
-| JPG → WebP | FFmpeg with the WebP encoder. |
-| WebP → PNG | ImageIO WebP reader. |
-| HEIC → JPG | FFmpeg, with ImageMagick/HEIC fallback. |
-| MP4 → MP3, WAV → MP3 | FFmpeg audio encoding. |
-| MP4 → GIF | FFmpeg; clips are limited to 30 seconds. |
-| ZIP Extract | Reads and repackages safe entries into a downloadable ZIP; it does not expose individual extracted downloads. |
-| File Compress | JPEG quality reduction, PNG/PDF re-encoding, or GZIP for other input types. A smaller output is not guaranteed. |
+| PDF → Word | LibreOffice PDF layout import preserves editable positioned text, font sizes/styles/colors, images, graphics, and page dimensions. Page anchors are normalized; a PDF round trip checks per-page text, page count, and dimensions before publishing. Text extraction differences return a warning with the DOCX rather than rejecting it. Text boxes are used rather than recovering the original Word paragraph/table structure. Scans remain images and return an OCR warning. |
+| Word → PDF | DOC/DOCX use LibreOffice Writer to render formatting, tables, images, headers/footers, links, and pagination. Fonts must be installed on the server; unsupported Office features can differ from Microsoft Word. |
+| PDF → Excel | Glyph coordinates infer columns, with rich text fonts, sizes, bold/italic, and colors. Every displayed value remains text, preserving leading zeros, long IDs, currency, and formula-looking strings. Original formulas, merged cells, borders, graphics, and spreadsheet structure cannot be recovered; no OCR. |
+| Excel → PDF | XLS/XLSX use LibreOffice Calc with the original workbook, print areas, page settings, visible sheets, displayed values, charts, and images. The backend does not rewrite or force-fit the workbook. |
+| PowerPoint → PDF | PPT/PPTX use LibreOffice Impress for static slide layouts, text, shapes, and pictures. Animations, transitions, notes, and embedded audio/video are not retained. |
+| JPG → PNG | ImageMagick applies EXIF orientation and converts colors to sRGB before removing metadata. PNG encoding adds no lossy compression, but the source JPEG has already been compressed. |
+| PNG → JPG | ImageMagick uses configurable JPEG quality (92 by default) and a white background for transparency. APNG inputs are rejected rather than silently discarding animation. |
+| JPG → WebP | ImageMagick uses configurable lossy WebP quality (90 by default). |
+| WebP → PNG | ImageMagick preserves the still image and alpha channel. Animated WebP is rejected rather than returning only its first frame. |
+| HEIC → JPG | ImageMagick/libheif converts the primary HEIC/HEIF image. Auxiliary images, depth maps, and HDR data are not retained. |
+| MP4 → MP3 | FFmpeg extracts the first audio track; supported source sample rates and mono/stereo are retained, and supported text tags are copied. Surround audio is downmixed with a warning. Video, additional tracks, artwork, and chapters are not retained. |
+| WAV → MP3 | Same audio policy; MP3 encoding is lossy. Unsupported source sample rates use the configured fallback (44.1kHz by default). Encoded codec, sample rate, channels, and known source duration are verified. |
+| MP4 → GIF | FFmpeg converts the first video track with a generated palette, preserving display aspect ratio (including non-square pixels). Defaults: first 30 seconds, 10fps, at most 480 pixels per dimension, infinite looping, and no audio. |
+| ZIP Extract | Repackages safe entries, checking expansion limits, declared sizes, and CRCs. Preserves contents, directories, modification times, comments, and safe Unix permissions. Unsafe paths/symlinks/device entries are omitted with warnings; duplicate/conflicting paths and damaged entries are rejected. |
+| File Compress | JPEG quality reduction, PNG/PDF re-encoding, or lossless GZIP for other input types. JPEG/PNG/PDF return the original unchanged if re-encoding does not shrink it. Signed PDFs are rejected to avoid invalidating signatures. |
+
+Successful API responses include a `warnings` array when the conversion changes or cannot recover features. Clients should display these messages with the result. Existing success fields and download routes are unchanged. Warnings describe actual output policies; they are not a claim of pixel-perfect conversion.
+
+PDF-to-Word uses the maintained LibreOffice [PDF import and DOCX export filters](https://help.libreoffice.org/latest/en-US/text/shared/guide/convertfilters.html). PDF stores painted page content rather than original Office structure, so native tables, semantic headers/footers, reading order in complicated layouts, annotations, forms, and font availability still require representative document testing. The verification check reports selectable-character differences as warnings and rejects changed page geometry; it cannot detect every possible visual difference. Install any required licensed source fonts on the server and in the Word viewer.
+
+All image conversions use sRGB color management. `IMAGE_SRGB_PROFILE` can select an ICC profile; otherwise the standard Ubuntu or macOS sRGB profile is discovered automatically. Without an installed profile, an explicit color-management warning is returned. Docker and CI install `icc-profiles-free`. This uses ImageMagick's [ICC profile conversion](https://imagemagick.org/command-line-options/#profile) before stripping metadata.
 
 Defaults: 50MB uploads, two guest attempts/day, ten signed-in attempts/day, and 30-minute downloads. Quotas reset at midnight UTC. Attempts consume quota even when processing fails or the browser cancels. Cancelling the upload does not stop work already received by the server.
 
@@ -54,7 +62,7 @@ Daily usage is stored separately from conversion history and reserved atomically
 
 Download URLs are unguessable bearer links: anyone with the link can download before expiry. Do not share sensitive links. Downloads use `no-store`. Expired output files are removed by a scheduled job, normally within one minute of expiry while the service is running. Conversion metadata (including filenames and client IP) is retained for approximately 30 days after expiry. Orphaned work files are swept hourly after expiry plus a ten-minute grace period.
 
-PDFs have a 500-page limit. Images decoded with ImageIO are limited to 25 megapixels and 10,000 pixels per side. ZIPs permit at most 1,000 entries, 100MB per entry, and 500MB total uncompressed data. Unsafe archive paths are skipped.
+PDFs have a 500-page limit and a 500,000-character extraction budget. PDF-to-Excel also enforces the spreadsheet cell limit and a configurable 1,024-style budget. Images decoded with ImageIO are limited to 25 megapixels and 10,000 pixels per side. ZIPs permit at most 1,000 entries, 100MB per entry, and 500MB total uncompressed data. Unsafe archive paths are skipped and reported. Password-protected inputs, macro-enabled OOXML documents, and externally linked Office resources are rejected.
 
 ## Database migrations
 
@@ -89,13 +97,13 @@ npm audit --omit=dev
 
 For separate local frontend/backend processes, use `API_URL=http://localhost:8080`, `FRONTEND_URL=http://localhost:3000`, `BACKEND_URL=http://localhost:8080`, and `CORS_ALLOWED_ORIGINS=http://localhost:3000`.
 
-Backend tests cover document and image outputs, malformed input, archive safety, compression round trips, migrations/startup, public health, authentication, revoked roles/tokens, and conversion downloads. H2 integration tests mock quota reservations because their SQL is PostgreSQL-specific.
+Backend tests exercise all 15 routes using real native tools. Fidelity regressions cover PDF colors/positions/images/page sizes, editable text boxes, scans, rich text spreadsheets, print areas, charts, slide pictures, EXIF orientation, CMYK colors, animation rejection, audio tags/channels/sample rates, GIF display aspect ratio, archive checksums/metadata, and signature-safe compression. Other tests cover malformed input, archive safety, compression round trips, migrations/startup, public health, authentication, revoked roles/tokens, and conversion downloads. H2 integration tests mock quota reservations because their SQL is PostgreSQL-specific.
 
 To run the actual PostgreSQL quota concurrency/reset tests, point `QUOTA_TEST_DATABASE_URL`, `QUOTA_TEST_DATABASE_USER`, and `QUOTA_TEST_DATABASE_PASSWORD` at an isolated test database, then run `sh mvnw test`. These tests create and remove a uniquely named test schema. GitHub Actions provides PostgreSQL and runs these checks automatically. Without these variables, the two PostgreSQL tests are skipped.
 
 ## Deployment considerations
 
-The Docker backend installs FFmpeg, ImageMagick with HEIC support, LibreOffice, and fonts, and runs as a non-root user. Docker images and media executables need to be smoke-tested with representative files before a release. OAuth/SMTP need a test using real configured providers.
+The Docker backend installs FFmpeg, ImageMagick with HEIC support, LibreOffice Writer/Calc/Impress/Draw (including PDF import), Noto/Liberation fonts, and an sRGB ICC profile, and runs as a non-root user. Compose defaults to a 2GiB backend memory limit, 256 processes, and two CPUs; adjust `BACKEND_MEMORY_LIMIT`, `BACKEND_CPU_LIMIT`, and conversion concurrency together for your workload. Docker images and media executables need to be smoke-tested with representative files before a release. OAuth/SMTP need a test using real configured providers.
 
 The Compose network uses `172.30.0.0/24`, with the gateway at `.2`. The backend trusts forwarded addresses only from that gateway, which overwrites incoming forwarding headers. If changing the network or adding a load balancer, update the trusted-proxy setting and edge rules together. Do not expose arbitrary trusted forwarding headers to clients. Standalone requests use the socket client address by default.
 
@@ -106,3 +114,40 @@ Unique-visitor analytics are approximate: browser sessions are deduplicated in a
 The frontend's production dependency audit is clean at implementation time. Development-only Tailwind/ESLint dependencies still have reported advisories; upgrading their major versions requires a separate tooling migration. JWTs currently live in browser localStorage; protect the frontend from XSS and plan an HttpOnly cookie session migration if the deployment requires it.
 
 No paid plan, billing system, unlimited quota, OCR, or perfect Office/PDF layout preservation is implemented. The frontend no longer advertises those unavailable capabilities.
+
+
+## Application configuration and local development
+
+`src/main/resources/application.yml` is the source of application defaults. Every
+operational setting has an environment override (`${ENV_NAME:default}`); Java
+consumers do not supply fallback values or read environment variables directly.
+Spring properties and command-line arguments can also override these values.
+
+Start with local settings using:
+
+```sh
+SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
+```
+
+`application-dev.yml` uses PostgreSQL at `localhost:5432/unimorpher` with
+`admin/admin`, SMTP at `localhost:1025` without authentication/TLS, and storage
+under `./var`. Start those services locally or override their settings. The dev
+JWT key is exclusively for local use; other profiles require a `JWT_SECRET` of
+at least 64 bytes. Google login requires `GOOGLE_CLIENT_ID`.
+
+Native conversion tools must be installed, including LibreOffice PDF import support and an sRGB ICC profile. Set `LIBREOFFICE_BINARY`,
+`IMAGEMAGICK_BINARY`, `FFMPEG_BINARY`, and `FFPROBE_BINARY` as needed. For macOS
+LibreOffice, use `LIBREOFFICE_BINARY=/Applications/LibreOffice.app/Contents/MacOS/soffice`.
+The dev profile disables native health probes by default; conversion routes still
+require their respective tools.
+
+Rate limits, request windows, token lifetimes, cleanup intervals, retention,
+conversion budgets, image quality, media output parameters, pool sizes, CORS,
+and log levels are configurable in the base YAML. Set `MAIL_FROM` to the sender
+address accepted by your SMTP provider. Verification/reset email text uses the
+configured token lifetime.
+
+HTTP outcome logs include method, route template, status, duration, and a generated
+request ID returned in `X-Request-ID`. Query strings, request bodies, and auth
+tokens are omitted. `LOGGING_LEVEL_COM_CONVERTER` defaults to `INFO` (`DEBUG` in
+dev); `LOGGING_PATTERN_CONSOLE` can customize the pattern.
