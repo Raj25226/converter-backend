@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.*;
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
+    private final com.converter.service.QuotaService quotas;
+    private final com.converter.util.IpUtil ips;
 
     @GetMapping("/stats")
     public ResponseEntity<AnalyticsStatsResponse> getStats() {
@@ -32,6 +34,7 @@ public class AnalyticsController {
             HttpServletRequest httpReq) {
         log.debug("Track visit: session=[{}], page=[{}], ip=[{}]",
                 req.getSessionId(), req.getPage(), httpReq.getRemoteAddr());
+        quotas.reserveRequest(ips.getClientIp(httpReq), "visit", 30);
         analyticsService.trackVisit(req.getSessionId());
         return ResponseEntity.ok(ApiResponse.success("Visit tracked"));
     }

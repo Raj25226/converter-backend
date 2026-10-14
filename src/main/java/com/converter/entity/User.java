@@ -38,6 +38,9 @@ public class User {
     @Column(nullable = false, length = 20)
     private Role role = Role.USER;
 
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion = 0;
+
     @Column(columnDefinition = "TEXT")
     private String picture;
 

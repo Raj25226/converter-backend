@@ -1,548 +1,108 @@
-# 🚀 Production File Converter - Complete Setup Guide
+# Unimorpher
 
-## ✅ What's Included
+Unimorpher converts documents, images, audio, video, and archives. This repository contains the Java 21 / Spring Boot backend. The Next.js frontend lives in the sibling `../converter-frontend` repository.
 
-### Fully Working Features
+Guests can convert without signing in. Accounts add email verification, Google sign-in, profile settings, password recovery, and conversion history. Administrators can inspect usage, search users, change roles, suspend accounts, and delete users with their associated history.
 
-1. **✅ Google OAuth 2.0** - Production-ready authentication
-2. **✅ PDF ↔ Word** - Full text extraction and rendering
-3. **✅ PDF ↔ Excel** - Table detection and spreadsheet creation
-4. **✅ Image Conversions** - JPG, PNG, WebP with proper color handling
-5. **✅ PowerPoint → PDF** - Slide rendering to PDF
-6. **✅ Video → Audio** - MP4 to MP3 (requires FFmpeg)
-7. **✅ HEIC → JPG** - Apple image format (requires ImageMagick)
-8. **✅ Analytics System** - Automatic tracking with async processing
-9. **✅ File Cleanup** - Auto-delete after 30 minutes
-10. **✅ Docker Support** - Complete containerized deployment
+## Run the complete stack
 
----
+Requires Docker Compose and both repositories checked out side by side:
 
-## 📦 Quick Start (5 Minutes)
+```text
+Github/
+  converter-backend/
+  converter-frontend/
+```
 
-### Option 1: Docker (Recommended)
-
-```bash
-# 1. Clone and navigate to project
-cd your-project
-
-# 2. Copy environment template
+```sh
 cp .env.example .env
+# Edit .env: set DB_PASSWORD and JWT_SECRET; configure SMTP and Google OAuth.
+# Generate JWT_SECRET with: openssl rand -base64 64
 
-# 3. Edit .env and set:
-#    - GOOGLE_CLIENT_ID (from Google Cloud Console)
-#    - JWT_SECRET (generate with: openssl rand -base64 32)
-#    - DB_PASSWORD
-
-# 4. Start everything
-docker-compose up -d
-
-# 5. Check status
-docker-compose ps
-
-# 6. View logs
-docker-compose logs -f backend
+docker compose up --build -d
 ```
 
-**Access:**
-- Backend API: http://localhost:8080
-- API Docs: http://localhost:8080/actuator
-- Health Check: http://localhost:8080/actuator/health
+Open **http://localhost:8088**. The gateway sends API requests directly to the backend and other requests to the frontend. Direct database, backend, and frontend ports are bound to localhost. The backend health endpoint is `/actuator/health` (available directly on localhost:8080); analytics endpoints require admin access.
 
-### Option 2: Local Development
+Use your real HTTPS hostname for `FRONTEND_URL`, `BACKEND_URL`, and `CORS_ALLOWED_ORIGINS` before deploying. Terminate TLS at a controlled edge. The bundled gateway is HTTP for local use. Build the frontend again when changing its public site URL, Google client ID, or API proxy URL.
 
-```bash
-# 1. Install dependencies (Ubuntu/Debian)
-sudo apt-get update
-sudo apt-get install -y ffmpeg imagemagick libheif-examples
+Configure Google OAuth with the same client ID on both sides and your frontend origin in Google's authorized JavaScript origins. SMTP delivers verification and password-reset emails. Those workflows cannot work without valid SMTP credentials. The frontend hides Google sign-in when its client ID is absent.
 
-# 2. Setup database
-docker run -d \
-  --name converter-postgres \
-  -e POSTGRES_DB=converter \
-  -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 \
-  postgres:16
+**Rotate the database, SMTP, and JWT credentials previously embedded in this repository before deployment.** Removing them from the current configuration does not remove them from Git history or revoke them.
 
-# 3. Configure environment
-export GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
-export JWT_SECRET="your-secret-key-here"
+## Features and limits
 
-# 4. Build and run
-mvn clean install
-mvn spring-boot:run
+| Tool | Implementation and limits |
+| --- | --- |
+| PDF → Word | Extracts selectable text into DOCX; no OCR or layout reconstruction. |
+| Word → PDF | DOCX paragraphs and tables render as text; legacy DOC uses LibreOffice. |
+| PDF → Excel | Extracts text and heuristically separates table columns; not OCR. |
+| Excel → PDF | XLS/XLSX values render as text; charts and print layouts are not preserved. |
+| PowerPoint → PDF | PPTX slides render as images; legacy PPT uses LibreOffice. |
+| JPG ↔ PNG | ImageIO conversion; transparent PNGs use a white JPEG background. |
+| JPG → WebP | FFmpeg with the WebP encoder. |
+| WebP → PNG | ImageIO WebP reader. |
+| HEIC → JPG | FFmpeg, with ImageMagick/HEIC fallback. |
+| MP4 → MP3, WAV → MP3 | FFmpeg audio encoding. |
+| MP4 → GIF | FFmpeg; clips are limited to 30 seconds. |
+| ZIP Extract | Reads and repackages safe entries into a downloadable ZIP; it does not expose individual extracted downloads. |
+| File Compress | JPEG quality reduction, PNG/PDF re-encoding, or GZIP for other input types. A smaller output is not guaranteed. |
+
+Defaults: 50MB uploads, two guest attempts/day, ten signed-in attempts/day, and 30-minute downloads. Quotas reset at midnight UTC. Attempts consume quota even when processing fails or the browser cancels. Cancelling the upload does not stop work already received by the server.
+
+Daily usage is stored separately from conversion history and reserved atomically in PostgreSQL. Deleting history or expiring files does not reset usage. Guest identity is the normalized client IP; shared networks share guest quota. Auth and visit tracking also have per-minute request limits. Two conversions can run simultaneously per backend instance; additional requests receive 503. External conversion processes time out after two minutes.
+
+Download URLs are unguessable bearer links: anyone with the link can download before expiry. Do not share sensitive links. Downloads use `no-store`. Expired output files are removed by a scheduled job, normally within one minute of expiry while the service is running. Conversion metadata (including filenames and client IP) is retained for approximately 30 days after expiry. Orphaned work files are swept hourly after expiry plus a ten-minute grace period.
+
+PDFs have a 500-page limit. Images decoded with ImageIO are limited to 25 megapixels and 10,000 pixels per side. ZIPs permit at most 1,000 entries, 100MB per entry, and 500MB total uncompressed data. Unsafe archive paths are skipped.
+
+## Database migrations
+
+Flyway manages the schema; Hibernate validates it instead of changing it during startup.
+
+- V1: original application tables.
+- V2: independent quota ledger.
+- V3: JWT revocation version. Changing or resetting a password invalidates existing tokens.
+
+For a **new database**, migrations run automatically. For an **existing database created by the old Hibernate `update` setting**, back it up and compare its schema against V1 first. If compatible, perform a one-time deployment with `SPRING_FLYWAY_BASELINE_ON_MIGRATE=true` and `SPRING_FLYWAY_BASELINE_VERSION=1`, then remove those settings. This baselines the existing tables and applies V2 and V3. Do not silently baseline an unreviewed schema.
+
+The first administrator must be provisioned by a database operator after creating and verifying an account. For example, execute a parameterized update of that account's `users.role` to `ADMIN`. There is no public bootstrap-admin endpoint. Role changes and account suspensions are checked against the database on each authenticated request.
+
+## Local development and checks
+
+```sh
+# Backend: Java 21 or a compatible newer JDK; PostgreSQL required to run the app.
+# Export configuration from .env through your development environment.
+sh mvnw test
+sh mvnw spring-boot:run
+
+# Frontend: Node 22+
+cd ../converter-frontend
+cp .env.example .env.local
+npm ci
+npm run dev
+npm run lint
+npm run build
+npm run typecheck
+npm audit --omit=dev
 ```
 
----
+For separate local frontend/backend processes, use `API_URL=http://localhost:8080`, `FRONTEND_URL=http://localhost:3000`, `BACKEND_URL=http://localhost:8080`, and `CORS_ALLOWED_ORIGINS=http://localhost:3000`.
 
-## 🔐 Google OAuth Setup (10 Minutes)
+Backend tests cover document and image outputs, malformed input, archive safety, compression round trips, migrations/startup, public health, authentication, revoked roles/tokens, and conversion downloads. H2 integration tests mock quota reservations because their SQL is PostgreSQL-specific.
 
-### Step 1: Create Google Cloud Project
+To run the actual PostgreSQL quota concurrency/reset tests, point `QUOTA_TEST_DATABASE_URL`, `QUOTA_TEST_DATABASE_USER`, and `QUOTA_TEST_DATABASE_PASSWORD` at an isolated test database, then run `sh mvnw test`. These tests create and remove a uniquely named test schema. GitHub Actions provides PostgreSQL and runs these checks automatically. Without these variables, the two PostgreSQL tests are skipped.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Click **Select a project** → **New Project**
-3. Name: "File Converter" → **Create**
+## Deployment considerations
 
-### Step 2: Enable API
+The Docker backend installs FFmpeg, ImageMagick with HEIC support, LibreOffice, and fonts, and runs as a non-root user. Docker images and media executables need to be smoke-tested with representative files before a release. OAuth/SMTP need a test using real configured providers.
 
-1. Go to **APIs & Services** → **Library**
-2. Search "**Google+ API**"
-3. Click **Enable**
+The Compose network uses `172.30.0.0/24`, with the gateway at `.2`. The backend trusts forwarded addresses only from that gateway, which overwrites incoming forwarding headers. If changing the network or adding a load balancer, update the trusted-proxy setting and edge rules together. Do not expose arbitrary trusted forwarding headers to clients. Standalone requests use the socket client address by default.
 
-### Step 3: Create OAuth Credentials
+File storage is local to the backend container. Keep a single backend instance unless output storage is shared; a database alone does not make download files available across replicas. Back up PostgreSQL, set container CPU/memory/disk limits, monitor disk space and health, and configure dependency scanning and an update process. Native parsers run in the application container; a separate isolated worker tier and malware scanning are further hardening options for hostile public uploads.
 
-1. Go to **APIs & Services** → **Credentials**
-2. Click **Create Credentials** → **OAuth 2.0 Client ID**
+Unique-visitor analytics are approximate: browser sessions are deduplicated in a bounded per-instance cache that resets daily, at capacity, or on restart. Conversion counters are persisted.
 
-3. **Configure Consent Screen:**
-   ```
-   User Type: External
-   App name: File Converter
-   User support email: your-email@example.com
-   Developer contact: your-email@example.com
-   ```
-   Click **Save and Continue** through all steps
+The frontend's production dependency audit is clean at implementation time. Development-only Tailwind/ESLint dependencies still have reported advisories; upgrading their major versions requires a separate tooling migration. JWTs currently live in browser localStorage; protect the frontend from XSS and plan an HttpOnly cookie session migration if the deployment requires it.
 
-4. **Create OAuth Client:**
-   ```
-   Application type: Web application
-   Name: File Converter Web Client
-   
-   Authorized JavaScript origins:
-   - http://localhost:3000
-   - https://yourdomain.com
-   
-   Authorized redirect URIs:
-   - http://localhost:3000
-   - https://yourdomain.com
-   ```
-
-5. **Copy Client ID** and add to `.env`:
-   ```bash
-   GOOGLE_CLIENT_ID=123456789-abc123.apps.googleusercontent.com
-   ```
-
-### Step 4: Frontend Integration
-
-Install Google OAuth library:
-```bash
-npm install @react-oauth/google
-```
-
-Wrap your app:
-```javascript
-import { GoogleOAuthProvider } from '@react-oauth/google';
-
-function App() {
-  return (
-    <GoogleOAuthProvider clientId="YOUR_CLIENT_ID">
-      {/* Your app */}
-    </GoogleOAuthProvider>
-  );
-}
-```
-
-Add login button:
-```javascript
-import { GoogleLogin } from '@react-oauth/google';
-
-function Login() {
-  return (
-    <GoogleLogin
-      onSuccess={async (response) => {
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential: response.credential })
-        });
-        
-        const data = await res.json();
-        localStorage.setItem('token', data.token);
-        // Redirect to dashboard
-      }}
-      onError={() => console.log('Login Failed')}
-    />
-  );
-}
-```
-
----
-
-## 🛠️ System Dependencies
-
-### Ubuntu/Debian
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    ffmpeg \
-    imagemagick \
-    libheif-examples
-```
-
-### macOS
-
-```bash
-brew install ffmpeg imagemagick libheif
-```
-
-### Verify Installation
-
-```bash
-ffmpeg -version
-convert --version
-```
-
----
-
-## 🧪 Testing
-
-### Run Test Script
-
-```bash
-# Make script executable
-chmod +x test-conversions.sh
-
-# Run all tests
-./test-conversions.sh
-```
-
-### Manual Testing
-
-```bash
-# Test Google OAuth
-curl -X POST http://localhost:8080/api/auth/google \
-  -H "Content-Type: application/json" \
-  -d '{"credential":"YOUR_GOOGLE_TOKEN"}'
-
-# Test PDF to Word
-curl -X POST http://localhost:8080/api/convert/pdf-to-word \
-  -F "file=@test.pdf" \
-  | jq
-
-# Test image conversion
-curl -X POST http://localhost:8080/api/convert/jpg-to-png \
-  -F "file=@test.jpg" \
-  | jq
-
-# Test video to audio
-curl -X POST http://localhost:8080/api/convert/mp4-to-mp3 \
-  -F "file=@test.mp4" \
-  | jq
-
-# Check analytics
-curl http://localhost:8080/api/analytics/stats | jq
-```
-
----
-
-## 📁 File Structure
-
-```
-your-project/
-├── src/
-│   └── main/
-│       ├── java/com/converter/
-│       │   ├── controller/
-│       │   │   ├── AuthController.java
-│       │   │   ├── ConversionController.java
-│       │   │   └── AnalyticsController.java
-│       │   ├── service/
-│       │   │   ├── GoogleAuthService.java ← Production Google OAuth
-│       │   │   ├── FileConversionService.java ← All conversions working
-│       │   │   └── AnalyticsService.java
-│       │   └── ...
-│       └── resources/
-│           └── application.yaml
-├── Dockerfile ← Production-ready with all dependencies
-├── docker-compose.yml ← Complete stack
-├── .env.example ← Environment template
-├── test-conversions.sh ← Automated tests
-└── pom.xml
-```
-
----
-
-## 🔄 Conversion Status
-
-| Conversion | Status | Requirements | Notes |
-|------------|--------|--------------|-------|
-| PDF → Word | ✅ Working | None | Text extraction |
-| Word → PDF | ✅ Working | None | Text rendering |
-| JPG ↔ PNG | ✅ Working | None | Color space handling |
-| Excel → PDF | ✅ Working | None | Table rendering |
-| PDF → Excel | ✅ Working | None | Table detection |
-| PPT → PDF | ✅ Working | None | Slide rendering |
-| WebP → PNG | ✅ Working | None | Standard ImageIO |
-| MP4 → MP3 | ✅ Working | FFmpeg | Audio extraction |
-| HEIC → JPG | ✅ Working | ImageMagick | Image format |
-
----
-
-## 🚀 Production Deployment
-
-### Docker Production Stack
-
-```bash
-# Build production image
-docker build -t file-converter:latest .
-
-# Run with docker-compose
-docker-compose --profile production up -d
-
-# Scale backend
-docker-compose up -d --scale backend=3
-```
-
-### Environment Variables for Production
-
-```bash
-# .env for production
-DB_PASSWORD=your_secure_password
-JWT_SECRET=$(openssl rand -base64 32)
-GOOGLE_CLIENT_ID=your-production-client-id
-CORS_ALLOWED_ORIGINS=https://yourdomain.com
-JAVA_MAX_MEMORY=2g
-```
-
-### Nginx Reverse Proxy
-
-Create `nginx.conf`:
-```nginx
-http {
-    upstream backend {
-        server backend:8080;
-    }
-
-    server {
-        listen 80;
-        server_name yourdomain.com;
-
-        client_max_body_size 100M;
-
-        location /api {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        location / {
-            root /usr/share/nginx/html;
-            try_files $uri /index.html;
-        }
-    }
-}
-```
-
----
-
-## 📊 Monitoring
-
-### Health Checks
-
-```bash
-# Application health
-curl http://localhost:8080/actuator/health
-
-# FFmpeg availability
-curl http://localhost:8080/health/ffmpeg
-
-# Database connection
-curl http://localhost:8080/actuator/health/db
-```
-
-### Logs
-
-```bash
-# Docker logs
-docker-compose logs -f backend
-
-# Application logs
-tail -f logs/application.log
-
-# Error logs
-tail -f logs/error.log
-```
-
-### Metrics
-
-Add to `pom.xml` for Prometheus metrics:
-```xml
-<dependency>
-    <groupId>io.micrometer</groupId>
-    <artifactId>micrometer-registry-prometheus</artifactId>
-</dependency>
-```
-
-Access metrics: http://localhost:8080/actuator/prometheus
-
----
-
-## 🔒 Security Checklist
-
-- [x] JWT with strong secret (32+ characters)
-- [x] Password hashing with BCrypt
-- [x] CORS properly configured
-- [x] File type validation
-- [x] File size limits (50MB)
-- [x] Path traversal protection
-- [x] Google OAuth with token verification
-- [ ] Rate limiting (implement with Bucket4j)
-- [ ] Malware scanning (integrate ClamAV)
-- [ ] HTTPS in production
-- [ ] API key for sensitive endpoints
-
----
-
-## 🐛 Troubleshooting
-
-### Google OAuth Not Working
-
-```bash
-# Check if client ID is set
-echo $GOOGLE_CLIENT_ID
-
-# Test with invalid token
-curl -X POST http://localhost:8080/api/auth/google \
-  -H "Content-Type: application/json" \
-  -d '{"credential":"invalid"}' \
-  | jq
-
-# Should return: {"status":"error","message":"Invalid Google credential"}
-```
-
-### FFmpeg Not Found
-
-```bash
-# Check FFmpeg
-which ffmpeg
-
-# Install if missing
-sudo apt-get install ffmpeg
-
-# Test conversion
-curl -X POST http://localhost:8080/api/convert/mp4-to-mp3 \
-  -F "file=@test.mp4"
-```
-
-### ImageMagick PDF Blocked
-
-```bash
-# Edit policy
-sudo nano /etc/ImageMagick-6/policy.xml
-
-# Change:
-<policy domain="coder" rights="none" pattern="PDF" />
-# To:
-<policy domain="coder" rights="read|write" pattern="PDF" />
-```
-
-### Database Connection Failed
-
-```bash
-# Check PostgreSQL
-docker ps | grep postgres
-
-# Check logs
-docker logs converter-postgres
-
-# Test connection
-psql -h localhost -U postgres -d converter
-```
-
----
-
-## 📈 Performance Tips
-
-### 1. Increase Memory
-
-```yaml
-# docker-compose.yml
-environment:
-  JAVA_OPTS: -Xmx2g -Xms1g
-```
-
-### 2. Enable Connection Pooling
-
-```yaml
-# application.yaml
-spring:
-  datasource:
-    hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
-```
-
-### 3. Add Redis Caching
-
-```yaml
-# docker-compose.yml
-services:
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-```
-
----
-
-## 📞 Support
-
-### Common Issues
-
-1. **Conversion fails:** Check system dependencies installed
-2. **Google OAuth error:** Verify client ID and origins
-3. **File too large:** Increase `max-file-size` in application.yaml
-4. **Slow conversions:** Increase Java memory allocation
-
-### Getting Help
-
-- Check logs: `docker-compose logs backend`
-- Test endpoints: Use `test-conversions.sh`
-- Verify setup: Run health checks
-
----
-
-## ✨ What's New
-
-### Production-Ready Google OAuth
-- ✅ Full token verification
-- ✅ Email verification check
-- ✅ User auto-creation
-- ✅ Proper error handling
-
-### Working File Conversions
-- ✅ PDF ↔ Word with formatting
-- ✅ PDF ↔ Excel with tables
-- ✅ Images with color space handling
-- ✅ PowerPoint → PDF with rendering
-- ✅ Video → Audio with FFmpeg
-- ✅ HEIC support with ImageMagick
-
-### Auto Analytics
-- ✅ Conversions tracked automatically
-- ✅ Async processing (no slowdown)
-- ✅ Stats cached (5 min)
-- ✅ IP and user agent tracking
-
----
-
-## 🎉 You're Ready!
-
-Your file converter is now production-ready with:
-- ✅ Working Google OAuth 2.0
-- ✅ All conversions functioning
-- ✅ Docker deployment ready
-- ✅ Automated testing
-- ✅ Analytics tracking
-- ✅ Security best practices
-
-**Start the application:**
-```bash
-docker-compose up -d
-```
-
-**Access your API:**
-http://localhost:8080
-
-**Happy converting! 🚀**
+No paid plan, billing system, unlimited quota, OCR, or perfect Office/PDF layout preservation is implemented. The frontend no longer advertises those unavailable capabilities.

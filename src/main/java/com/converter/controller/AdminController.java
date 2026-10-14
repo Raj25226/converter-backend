@@ -39,14 +39,19 @@ public class AdminController {
     @PatchMapping("/users/{userId}")
     public ResponseEntity<ApiResponse> updateUser(
             @PathVariable Long userId,
-            @RequestBody UserUpdateRequest req) {
+            @RequestBody UserUpdateRequest req, org.springframework.security.core.Authentication auth) {
+        if (userId.equals(auth.getPrincipal()) && (Boolean.FALSE.equals(req.getIsActive()) ||
+                (req.getRole() != null && !"admin".equalsIgnoreCase(req.getRole())))) {
+            throw new com.converter.exception.AppException("You cannot suspend or demote your own account.", org.springframework.http.HttpStatus.CONFLICT);
+        }
         adminService.updateUser(userId, req);
         return ResponseEntity.ok(ApiResponse.success("User updated"));
     }
 
     // DELETE /api/admin/users/:userId
     @DeleteMapping("/users/{userId}")
-    public ResponseEntity<ApiResponse> deleteUser(@PathVariable Long userId) {
+    public ResponseEntity<ApiResponse> deleteUser(@PathVariable Long userId, org.springframework.security.core.Authentication auth) {
+        if (userId.equals(auth.getPrincipal())) throw new com.converter.exception.AppException("You cannot delete your own admin account.", org.springframework.http.HttpStatus.CONFLICT);
         adminService.deleteUser(userId);
         return ResponseEntity.ok(ApiResponse.success("User deleted"));
     }

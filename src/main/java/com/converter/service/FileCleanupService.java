@@ -25,6 +25,8 @@ public class FileCleanupService {
     private final ConversionRepository conversionRepository;
     private final EmailTokenRepository emailTokenRepository;
     private final Path outputPath;
+    @org.springframework.beans.factory.annotation.Value("${file.expiry-minutes:30}")
+    private int expiryMinutes;
 
     public FileCleanupService(ConversionRepository conversionRepository,
                               EmailTokenRepository emailTokenRepository,
@@ -36,18 +38,14 @@ public class FileCleanupService {
 
     /**
      * Runs every 60 seconds.
-     * Finds all expired conversions, deletes their physical files, then deletes the DB records.
+     * Deletes expired files, retaining history for 30 days.
      */
     @Scheduled(fixedDelayString = "${file.cleanup-interval-ms:60000}")
     @Transactional
     public void cleanupExpiredFiles() {
         Instant now = Instant.now();
-        List<Conversion> expired = conversionRepository.findByExpiresAtBefore(now);
+        List<Conversion> expired = conversionRepository.findByExpiresAtBeforeAndFileIdIsNotNull(now);
 
-        if (expired.isEmpty()) {
-            log.debug("File cleanup: no expired files found");
-            return;
-        }
 
         log.info("File cleanup: found {} expired conversion records", expired.size());
 
@@ -57,6 +55,7 @@ public class FileCleanupService {
         for (Conversion conv : expired) {
             if (conv.getFileId() == null) continue;
 
+            boolean removed = true;
             for (String ext : KNOWN_EXTENSIONS) {
                 Path candidate = outputPath.resolve(conv.getFileId() + "." + ext);
                 try {
@@ -65,13 +64,31 @@ public class FileCleanupService {
                         log.debug("Deleted expired file: {}", candidate.getFileName());
                     }
                 } catch (IOException e) {
+                    removed = false;
                     log.warn("Could not delete expired file [{}]: {}", candidate.getFileName(), e.getMessage());
                 }
             }
+            if (removed) conv.setFileId(null);
         }
 
-        int deletedRecords = conversionRepository.deleteExpiredConversions(now);
+        int deletedRecords = conversionRepository.deleteExpiredConversions(now.minus(30, java.time.temporal.ChronoUnit.DAYS));
         log.info("File cleanup complete: deleted {} physical files, {} DB records", filesDeleted, deletedRecords);
+    }
+
+    // Reclaim orphaned outputs and work directories after expiry plus a processing grace period.
+    @Scheduled(fixedDelay = 3_600_000)
+    public void cleanupOrphans() {
+        Instant cutoff = Instant.now().minus(expiryMinutes + 10L, java.time.temporal.ChronoUnit.MINUTES);
+        try (var entries = Files.list(outputPath)) {
+            for (Path entry : entries.toList()) {
+                String name = entry.getFileName().toString();
+                if (!(name.matches("[a-f0-9]{32}\\.[a-zA-Z0-9]+") || name.startsWith("office-"))) continue;
+                if (!Files.getLastModifiedTime(entry, java.nio.file.LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)) continue;
+                try (var paths = Files.walk(entry)) {
+                    for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+                } catch (IOException e) { log.warn("Could not reclaim orphaned output", e); }
+            }
+        } catch (IOException e) { log.warn("Orphan cleanup failed", e); }
     }
 
     /**

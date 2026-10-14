@@ -35,6 +35,8 @@ public class ConversionService {
     private final UserRepository userRepository;
     private final AnalyticsService analyticsService;
     private final Path outputPath;
+    private final QuotaService quotaService;
+    private final java.util.concurrent.Semaphore slots = new java.util.concurrent.Semaphore(2);
 
     @Value("${app.backend-download-url}")
     private String downloadBaseUrl;
@@ -53,7 +55,8 @@ public class ConversionService {
                              ConversionRepository conversionRepository,
                              UserRepository userRepository,
                              AnalyticsService analyticsService,
-                             @Qualifier("outputPath") Path outputPath) {
+                             @Qualifier("outputPath") Path outputPath, QuotaService quotaService) {
+        this.quotaService = quotaService;
         this.fileConversionService = fileConversionService;
         this.conversionRepository  = conversionRepository;
         this.userRepository        = userRepository;
@@ -149,7 +152,9 @@ public class ConversionService {
             throw new ConversionException("File size exceeds the 50MB limit.");
         }
 
-        checkRateLimit(userId, sessionId);
+        if (!slots.tryAcquire()) throw new AppException("Conversion workers are busy. Please try again shortly.", HttpStatus.SERVICE_UNAVAILABLE);
+        try {
+        quotaService.reserve(userId, ip, userId == null ? guestDailyLimit : userDailyLimit);
 
         long startMs = System.currentTimeMillis();
 
@@ -162,7 +167,7 @@ public class ConversionService {
         } catch (IOException ioe) {
             log.error("IO error during [{}] conversion of file [{}]",
                     converterType, file.getOriginalFilename(), ioe);
-            throw new ConversionException("Conversion failed due to an I/O error: " + ioe.getMessage());
+            throw new ConversionException("Conversion failed while processing the file. Please try again.");
         } catch (Exception e) {
             log.error("Unexpected error during [{}] conversion of file [{}]",
                     converterType, file.getOriginalFilename(), e);
@@ -196,7 +201,11 @@ public class ConversionService {
                     () -> log.warn("User id=[{}] not found when saving conversion record", userId)
             );
         }
-        conversionRepository.save(record);
+        try { conversionRepository.save(record); }
+        catch (RuntimeException e) {
+            try { Files.deleteIfExists(result.path()); } catch (IOException cleanup) { log.warn("Output cleanup failed", cleanup); }
+            throw e;
+        }
 
         // ✅ Track analytics ONCE — only here, never in AnalyticsController.trackConversion()
         analyticsService.trackConversion(converterType);
@@ -210,36 +219,10 @@ public class ConversionService {
                 expiresAt,
                 outputSize
         );
+        } finally { slots.release(); }
     }
 
     // ─── Rate Limiting ───────────────────────────────────────────────────────
-
-    private void checkRateLimit(Long userId, String sessionId) {
-        Instant startOfDay = LocalDate.now(ZoneOffset.UTC)
-                .atStartOfDay(ZoneOffset.UTC).toInstant();
-
-        if (userId != null) {
-            long count = conversionRepository.countTodayByUserId(userId, startOfDay);
-            log.debug("Rate limit check: user=[{}] used=[{}] limit=[{}]", userId, count, userDailyLimit);
-            if (count >= userDailyLimit) {
-                log.warn("Rate limit exceeded for user=[{}]: count=[{}]", userId, count);
-                throw new RateLimitException(
-                        "You've reached your daily limit of " + userDailyLimit +
-                                " conversions. Limit resets at midnight UTC.");
-            }
-        } else if (sessionId != null && !sessionId.isBlank()) {
-            long count = conversionRepository.countTodayBySessionId(sessionId, startOfDay);
-            log.debug("Rate limit check: session=[{}] used=[{}] limit=[{}]", sessionId, count, guestDailyLimit);
-            if (count >= guestDailyLimit) {
-                log.warn("Rate limit exceeded for guest session=[{}]: count=[{}]", sessionId, count);
-                throw new RateLimitException(
-                        "Guest accounts are limited to " + guestDailyLimit +
-                                " conversions per day. Sign up free to get " + userDailyLimit + "/day!");
-            }
-        } else {
-            log.debug("Rate limit check skipped: no userId or sessionId provided");
-        }
-    }
 
     // ─── Download ────────────────────────────────────────────────────────────
 
@@ -276,7 +259,7 @@ public class ConversionService {
 
         Instant startOfDay = LocalDate.now(ZoneOffset.UTC)
                 .atStartOfDay(ZoneOffset.UTC).toInstant();
-        long usedToday = conversionRepository.countTodayByUserId(userId, startOfDay);
+        long usedToday = quotaService.used(userId, null);
 
         log.debug("User=[{}] history: {} total records, {} used today", userId, conversions.size(), usedToday);
 

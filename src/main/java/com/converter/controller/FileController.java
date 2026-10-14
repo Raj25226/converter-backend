@@ -87,6 +87,8 @@ public class FileController {
                 fileId, safeFilename, file.length(), contentType);
 
         return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFilename + "\"")
                 .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(file.length())

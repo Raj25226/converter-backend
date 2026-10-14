@@ -24,14 +24,11 @@ ENV JAVA_TOOL_OPTIONS="-Duser.timezone=UTC"
 RUN apk add --no-cache \
     ffmpeg \
     imagemagick \
+    imagemagick-heic \
     libheif \
+    libreoffice \
+    font-dejavu \
     curl
-
-# Allow ImageMagick PDF processing
-RUN if [ -f /etc/ImageMagick-7/policy.xml ]; then \
-      sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' \
-      /etc/ImageMagick-7/policy.xml ; \
-    fi
 
 # Create non-root user
 RUN addgroup -S fileconvert && adduser -S fileconvert -G fileconvert
@@ -51,10 +48,11 @@ USER fileconvert
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/api/analytics/stats || exit 1
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 ENTRYPOINT ["java", \
-  "-Xmx512m", \
+  "-Xmx768m",
+  "-Djava.awt.headless=true", \
   "-Xms256m", \
   "-XX:+UseG1GC", \
   "-XX:+UseContainerSupport", \

@@ -23,6 +23,14 @@ public class JwtUtil {
     @Value("${jwt.expiration-days}")
     private long expirationDays;
 
+    @jakarta.annotation.PostConstruct
+    public void validateConfiguration() {
+        if (jwtSecret == null || jwtSecret.getBytes(StandardCharsets.UTF_8).length < 64) {
+            throw new IllegalStateException("JWT_SECRET must contain at least 64 bytes for HS512");
+        }
+        if (expirationDays < 1) throw new IllegalStateException("JWT expiry must be positive");
+    }
+
     private SecretKey getSigningKey() {
         byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         return Keys.hmacShaKeyFor(keyBytes);
@@ -36,6 +44,7 @@ public class JwtUtil {
                 .subject(String.valueOf(user.getId()))
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("version", user.getTokenVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
                 .signWith(getSigningKey(), Jwts.SIG.HS512)
@@ -52,6 +61,11 @@ public class JwtUtil {
 
     public Long getUserIdFromToken(String token) {
         return Long.parseLong(parseToken(token).getSubject());
+    }
+
+    public int getTokenVersion(String token) {
+        Integer version = parseToken(token).get("version", Integer.class);
+        return version == null ? 0 : version;
     }
 
     public String getRoleFromToken(String token) {

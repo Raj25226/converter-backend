@@ -170,6 +170,6 @@ public class ConversionController {
     }
 
     private Long userId(Authentication auth) {
-        return auth != null ? (Long) auth.getPrincipal() : null;
+        return auth != null && auth.getPrincipal() instanceof Long id ? id : null;
     }
 }

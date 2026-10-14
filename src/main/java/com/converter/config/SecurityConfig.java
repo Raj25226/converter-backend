@@ -88,6 +88,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/convert/**").permitAll()
                         .requestMatchers("/api/download/**").permitAll()
                         // ── Public analytics ─────────────────────────────────
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/api/analytics/stats").hasRole("ADMIN")
                         .requestMatchers("/api/analytics/**").permitAll()
                         // ── Admin only ────────────────────────────────────────
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -153,10 +155,12 @@ public class SecurityConfig {
             try {
                 if (jwtUtil.validateToken(token)) {
                     Long userId = jwtUtil.getUserIdFromToken(token);
-                    String role  = jwtUtil.getRoleFromToken(token);
+                    String role;
 
                     Optional<User> userOpt = userRepository.findById(userId);
-                    if (userOpt.isPresent() && userOpt.get().isActive()) {
+                    if (userOpt.isPresent() && userOpt.get().isActive()
+                            && jwtUtil.getTokenVersion(token) == userOpt.get().getTokenVersion()) {
+                        role = userOpt.get().getRole().name();
                         List<SimpleGrantedAuthority> authorities = List.of(
                                 new SimpleGrantedAuthority("ROLE_" + role)
                         );

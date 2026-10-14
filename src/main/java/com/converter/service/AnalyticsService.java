@@ -62,6 +62,9 @@ public class AnalyticsService {
         log.info("Tool stats initialized: {} tools total, {} newly created", ALL_TOOLS.size(), created);
     }
 
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 86_400_000)
+    public void clearVisitorCache() { seenSessions.clear(); }
+
     // ─── Track Visit ──────────────────────────────────────────────────────────
 
     /**
@@ -76,6 +79,7 @@ public class AnalyticsService {
             return;
         }
         try {
+            if (seenSessions.size() >= 100_000) seenSessions.clear();
             boolean isNewSession = seenSessions.putIfAbsent(sessionId, Boolean.TRUE) == null;
             analyticsWriter.writeVisit(isNewSession);
             if (isNewSession) {

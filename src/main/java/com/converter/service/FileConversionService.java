@@ -89,6 +89,7 @@ public class FileConversionService {
                 throw new ConversionException("PDF has too many pages (max " + MAX_PDF_PAGES + ")");
             }
 
+            if (pdf.getNumberOfPages() > MAX_PDF_PAGES) throw new ConversionException("PDF exceeds the 500 page limit");
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
 
@@ -133,7 +134,8 @@ public class FileConversionService {
     }
 
     public ConvertedFile wordToPdf(MultipartFile file) throws IOException {
-        validateExtension(file, "docx", "doc");
+        if ("doc".equalsIgnoreCase(FilenameUtils.getExtension(file.getOriginalFilename()))) return officeToPdf(file);
+        validateExtension(file, "docx");
         validateMime(file, "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "application/msword", "application/octet-stream");
 
@@ -199,6 +201,7 @@ public class FileConversionService {
              XSSFWorkbook wb = new XSSFWorkbook();
              FileOutputStream fos = new FileOutputStream(out.toFile())) {
 
+            if (pdf.getNumberOfPages() > MAX_PDF_PAGES) throw new ConversionException("PDF exceeds the 500 page limit");
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
             String text = stripper.getText(pdf);
@@ -317,7 +320,8 @@ public class FileConversionService {
     // ═══════════════════════════════════════════════════════════════════════
 
     public ConvertedFile pptToPdf(MultipartFile file) throws IOException {
-        validateExtension(file, "pptx", "ppt");
+        if ("ppt".equalsIgnoreCase(FilenameUtils.getExtension(file.getOriginalFilename()))) return officeToPdf(file);
+        validateExtension(file, "pptx");
 
         String fileId = uuid();
         Path out = outputPath.resolve(fileId + ".pdf");
@@ -331,6 +335,9 @@ public class FileConversionService {
                 pageSize = new Dimension(960, 720);
             }
 
+            if (ppt.getSlides().size() > 500 || (long) pageSize.width * pageSize.height > 25_000_000) {
+                throw new ConversionException("Presentation exceeds the slide or page size limit");
+            }
             for (XSLFSlide slide : ppt.getSlides()) {
                 // Render slide to BufferedImage
                 BufferedImage img = new BufferedImage(
@@ -409,9 +416,8 @@ public class FileConversionService {
     }
 
     public ConvertedFile jpgToWebp(MultipartFile file) throws IOException {
-        // TwelveMonkeys provides WebP write support via ImageIO
-        return convertImage(file, "jpg", "jpeg", "webp", "webp",
-                BufferedImage.TYPE_INT_RGB, false, 0);
+        validateExtension(file, "jpg", "jpeg");
+        return ffmpegConvert(file, "webp", "-frames:v", "1", "-c:v", "libwebp", "-quality", "90");
     }
 
     public ConvertedFile webpToPng(MultipartFile file) throws IOException {
@@ -432,12 +438,8 @@ public class FileConversionService {
             file.transferTo(inputPath.toFile());
             runFfmpeg(inputPath, out, "-vf", "scale=iw:ih", "-q:v", "2");
         } catch (ConversionException ffmpegEx) {
-            // Fallback: try ImageIO (may work if ImageMagick codec installed)
             try {
-                BufferedImage img = ImageIO.read(inputPath.toFile());
-                if (img == null) throw new ConversionException(
-                        "HEIC conversion requires FFmpeg. Install with: apt-get install ffmpeg libheif-examples");
-                writeJpeg(img, out, 0.92f);
+                executeProcess(List.of("magick", inputPath.toAbsolutePath() + "[0]", out.toAbsolutePath().toString()), "HEIC conversion");
             } catch (ConversionException e) {
                 Files.deleteIfExists(out);
                 throw e;
@@ -447,6 +449,24 @@ public class FileConversionService {
         }
 
         return new ConvertedFile(fileId, out, originalName(file, "jpg"));
+    }
+
+    private ConvertedFile officeToPdf(MultipartFile file) throws IOException {
+        Path work = Files.createTempDirectory(outputPath, "office-");
+        Path source = work.resolve("document." + FilenameUtils.getExtension(file.getOriginalFilename()).toLowerCase());
+        String id = uuid();
+        Path out = outputPath.resolve(id + ".pdf");
+        try {
+            file.transferTo(source.toFile());
+            executeProcess(List.of("soffice", "-env:UserInstallation=" + work.resolve("profile").toUri(),
+                    "--headless", "--convert-to", "pdf", "--outdir", work.toString(), source.toString()), "Office conversion");
+            Files.move(work.resolve("document.pdf"), out);
+            return new ConvertedFile(id, out, originalName(file, "pdf"));
+        } finally {
+            try (var paths = Files.walk(work)) {
+                for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            }
+        }
     }
 
     private ConvertedFile convertImage(MultipartFile file,
@@ -467,7 +487,7 @@ public class FileConversionService {
         Path out = outputPath.resolve(fileId + "." + outputExt);
 
         try {
-            BufferedImage src = ImageIO.read(file.getInputStream());
+            BufferedImage src = readImage(file);
             if (src == null) {
                 throw new ConversionException(
                         "Cannot read image file. Ensure the file is a valid " +
@@ -507,6 +527,24 @@ public class FileConversionService {
         }
 
         return new ConvertedFile(fileId, out, originalName(file, outputExt));
+    }
+
+    private BufferedImage readImage(MultipartFile file) throws IOException {
+        try (InputStream input = file.getInputStream();
+             javax.imageio.stream.ImageInputStream stream = ImageIO.createImageInputStream(input)) {
+            if (stream == null) throw new ConversionException("Cannot read image");
+            var readers = ImageIO.getImageReaders(stream);
+            if (!readers.hasNext()) throw new ConversionException("Unsupported or corrupt image");
+            var reader = readers.next();
+            try {
+                reader.setInput(stream);
+                int width = reader.getWidth(0), height = reader.getHeight(0);
+                if (width > MAX_IMAGE_DIM || height > MAX_IMAGE_DIM || (long) width * height > 25_000_000) {
+                    throw new ConversionException("Image exceeds the 25 megapixel limit");
+                }
+                return reader.read(0);
+            } finally { reader.dispose(); }
+        }
     }
 
     private void writeJpeg(BufferedImage img, Path out, float quality) throws IOException {
@@ -599,7 +637,7 @@ public class FileConversionService {
 
     private void runFfmpeg(Path input, Path output, String... extraArgs) throws IOException {
         List<String> cmd = new ArrayList<>(Arrays.asList(
-                "ffmpeg", "-y", "-i", input.toAbsolutePath().toString()
+                "ffmpeg", "-nostdin", "-threads", "2", "-y", "-i", input.toAbsolutePath().toString()
         ));
         cmd.addAll(Arrays.asList(extraArgs));
         cmd.add(output.toAbsolutePath().toString());
@@ -608,7 +646,7 @@ public class FileConversionService {
 
     private void runFfmpegRaw(Path input, Path output, String... extraArgs) throws IOException {
         List<String> cmd = new ArrayList<>(Arrays.asList(
-                "ffmpeg", "-y", "-i", input.toAbsolutePath().toString()
+                "ffmpeg", "-nostdin", "-threads", "2", "-y", "-i", input.toAbsolutePath().toString()
         ));
         cmd.addAll(Arrays.asList(extraArgs));
         cmd.add(output.toAbsolutePath().toString());
@@ -618,6 +656,7 @@ public class FileConversionService {
     private void executeProcess(List<String> cmd, String name) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
+        pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
 
         Process process;
         try {
@@ -625,34 +664,25 @@ public class FileConversionService {
         } catch (IOException e) {
             if (e.getMessage().contains("No such file") || e.getMessage().contains("error=2")) {
                 throw new ConversionException(
-                        "FFmpeg is not installed on this server. " +
-                                "This conversion requires FFmpeg. Install with: apt-get install ffmpeg");
+                        name + " is unavailable on this server. Please contact the administrator.");
             }
-            throw new ConversionException("Failed to start conversion process: " + e.getMessage());
+            throw new ConversionException("The conversion process could not be started.");
         }
 
-        // Capture output for error diagnosis
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        int exitCode;
+        // Discard tool output to prevent pipe deadlocks and unbounded diagnostic buffers.
         try {
-            exitCode = process.waitFor();
+            if (!process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+                throw new ConversionException("Conversion exceeded the two minute time limit.");
+            }
+            if (process.exitValue() != 0) {
+                throw new ConversionException("Conversion failed. The file may be corrupted or unsupported.");
+            }
         } catch (InterruptedException e) {
+            process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new ConversionException("Conversion was interrupted");
-        }
-
-        if (exitCode != 0) {
-            log.error("{} failed (exit {}): {}", name, exitCode, output);
-            throw new ConversionException(
-                    "Conversion failed. The file may be corrupted or in an unsupported format.");
         }
     }
 
@@ -678,7 +708,7 @@ public class FileConversionService {
                 String name = entry.getName();
 
                 // Security: prevent zip-slip
-                if (name.contains("..") || name.startsWith("/")) {
+                if (name.contains("..") || name.startsWith("/") || name.contains("\\") || name.contains(":")) {
                     log.warn("Skipping potentially dangerous path in ZIP: {}", name);
                     continue;
                 }
@@ -691,7 +721,16 @@ public class FileConversionService {
                 zos.putArchiveEntry(outEntry);
 
                 if (!entry.isDirectory()) {
-                    long copied = IOUtils.copyLarge(zis, zos, 0, 100 * 1024 * 1024); // 100MB per file
+                    long copied = 0;
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = zis.read(buffer)) != -1) {
+                        copied += read;
+                        if (copied > 100 * 1024 * 1024L || totalSize + copied > 500 * 1024 * 1024L) {
+                            throw new ConversionException("ZIP exceeds the uncompressed size limit");
+                        }
+                        zos.write(buffer, 0, read);
+                    }
                     totalSize += copied;
                     if (totalSize > 500 * 1024 * 1024L) { // 500MB uncompressed max
                         throw new ConversionException("ZIP contents exceed 500MB uncompressed");
@@ -735,7 +774,7 @@ public class FileConversionService {
         Path out = outputPath.resolve(fileId + ".jpg");
 
         try {
-            BufferedImage img = ImageIO.read(file.getInputStream());
+            BufferedImage img = readImage(file);
             if (img == null) throw new ConversionException("Cannot read JPEG file");
             writeJpeg(img, out, 0.75f); // 75% quality — good compression
         } catch (ConversionException e) {
@@ -752,7 +791,7 @@ public class FileConversionService {
         Path out = outputPath.resolve(fileId + ".png");
 
         try {
-            BufferedImage img = ImageIO.read(file.getInputStream());
+            BufferedImage img = readImage(file);
             if (img == null) throw new ConversionException("Cannot read PNG file");
             // PNG compression is always lossless; reduce color depth if possible
             ImageIO.write(img, "png", out.toFile());

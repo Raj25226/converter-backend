@@ -250,6 +250,7 @@ public class AuthService {
 
         User user = emailToken.getUser();
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setTokenVersion(user.getTokenVersion() + 1);
         userRepository.save(user);
 
         emailToken.setUsed(true);
@@ -333,6 +334,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setTokenVersion(user.getTokenVersion() + 1);
         userRepository.save(user);
 
         log.info("Password changed successfully for userId=[{}]", userId);

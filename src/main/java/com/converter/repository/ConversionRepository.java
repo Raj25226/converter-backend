@@ -43,7 +43,7 @@ public interface ConversionRepository extends JpaRepository<Conversion, Long> {
     long countTodayBySessionId(@Param("sessionId") String sessionId,
                                @Param("startOfDay") Instant startOfDay);
 
-    List<Conversion> findByExpiresAtBefore(Instant now);
+    List<Conversion> findByExpiresAtBeforeAndFileIdIsNotNull(Instant now);
 
     @Modifying
     @Transactional

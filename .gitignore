@@ -43,3 +43,7 @@ uploads/
 *.mp4
 *.xlsx
 *.xls
+.env
+.env.*
+!.env.example
+outputs/

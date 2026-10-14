@@ -25,6 +25,8 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final AnalyticsService analyticsService;
+    private final ConversionService conversionService;
+    private final com.converter.repository.EmailTokenRepository emailTokens;
 
     public AdminStatsResponse getStats() {
         log.info("Admin: fetching dashboard stats");
@@ -64,6 +66,7 @@ public class AdminService {
 
     public UserPageResponse getUsers(int limit, int offset, String search) {
         limit = Math.min(Math.max(limit, 1), 100);
+        offset = Math.max(0, offset);
         int page = offset / limit;
 
         // ✅ Normalize null search to empty string for the JPQL query
@@ -128,6 +131,10 @@ public class AdminService {
                     return new AppException("User not found", HttpStatus.NOT_FOUND);
                 });
 
+        for (var conversion : conversionService.getUserHistory(userId).getConversions()) {
+            conversionService.deleteConversionRecord(conversion.getId(), userId);
+        }
+        emailTokens.deleteByUserId(userId);
         userRepository.delete(user);
         log.info("Admin: user=[{}] email=[{}] deleted", userId, user.getEmail());
     }

@@ -14,6 +14,7 @@ import java.util.Optional;
 @Repository
 public interface EmailTokenRepository extends JpaRepository<EmailToken, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     Optional<EmailToken> findByToken(String token);
 
     @Modifying
@@ -21,6 +22,11 @@ public interface EmailTokenRepository extends JpaRepository<EmailToken, Long> {
     @Query("DELETE FROM EmailToken t WHERE t.user.id = :userId AND t.type = :type")
     void deleteByUserIdAndType(@Param("userId") Long userId,
                                @Param("type") EmailToken.TokenType type);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM EmailToken t WHERE t.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 
     @Modifying
     @Transactional

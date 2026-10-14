@@ -13,16 +13,16 @@ public interface AnalyticsRepository extends JpaRepository<Analytics, Long> {
 
     @Modifying
     @Transactional
-    @Query("UPDATE Analytics a SET a.totalVisits = a.totalVisits + 1, a.updatedAt = CURRENT_TIMESTAMP WHERE a.id = 1")
+    @Query("UPDATE Analytics a SET a.totalVisits = a.totalVisits + 1, a.updatedAt = instant WHERE a.id = 1")
     void incrementTotalVisits();
 
     @Modifying
     @Transactional
-    @Query("UPDATE Analytics a SET a.uniqueVisitors = a.uniqueVisitors + 1, a.updatedAt = CURRENT_TIMESTAMP WHERE a.id = 1")
+    @Query("UPDATE Analytics a SET a.uniqueVisitors = a.uniqueVisitors + 1, a.updatedAt = instant WHERE a.id = 1")
     void incrementUniqueVisitors();
 
     @Modifying
     @Transactional
-    @Query("UPDATE Analytics a SET a.totalConversions = a.totalConversions + 1, a.updatedAt = CURRENT_TIMESTAMP WHERE a.id = 1")
+    @Query("UPDATE Analytics a SET a.totalConversions = a.totalConversions + 1, a.updatedAt = instant WHERE a.id = 1")
     void incrementTotalConversions();
 }

@@ -1,10 +1,16 @@
 server:
   port: 8080
   error:
-    include-message: always
-    include-binding-errors: always
+    include-message: never
+    include-binding-errors: never
 
 spring:
+  task:
+    execution:
+      pool:
+        core-size: 2
+        max-size: 4
+        queue-capacity: 100
   # ── Multipart upload limits ────────────────────────────────────────────────
   # ✅ Must be under spring.servlet.multipart — NOT server.servlet.multipart
   # When placed under server.*, Spring Boot ignores it and defaults to 1MB,
@@ -16,10 +22,10 @@ spring:
       max-request-size: 55MB
 
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://trolley.proxy.rlwy.net:44659/railway?sslmode=require}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/unimorpher}
     driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:IouYWODYzKDbtrPGnamLHEZjTuUplywY}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:admin}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
@@ -29,7 +35,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     open-in-view: false
     properties:
@@ -45,8 +51,8 @@ spring:
   mail:
     host: ${SMTP_HOST:smtp.gmail.com}
     port: ${SMTP_PORT:587}
-    username: ${SMTP_USERNAME:unimorpher@gmail.com}
-    password: ${SMTP_PASSWORD:upda vdrb dyxj wayt}
+    username: ${SMTP_USERNAME:131}
+    password: ${SMTP_PASSWORD:weqwqw}
     properties:
       mail:
         smtp:
@@ -60,7 +66,7 @@ spring:
 
 # ── JWT ────────────────────────────────────────────────────────────────────────
 jwt:
-  secret: ${JWT_SECRET:Z1Z3dHNjZkM1YVZKcTg2Z2ZpN3ZKcW1KQ2l2bVd5dE1OZkpQY1JYcXJxU29nQ1hJRW5hN0Npb1E=}
+  secret: ${JWT_SECRET:u0SCUjsWo6hqeyP6ScJBSuMe+7M5BfbPPi4MJP3sfYB5W8clTp4sZpcS7GoC7dqdPpxhYlNl5d3NQj1lTz1LbQ==}
   expiration-days: ${JWT_EXPIRY_DAYS:7}
 
 # ── Google OAuth ───────────────────────────────────────────────────────────────
@@ -86,8 +92,8 @@ app:
 
 # ── Conversion Limits ──────────────────────────────────────────────────────────
 conversion:
-  guest-daily-limit: ${CONVERSION_GUEST_DAILY_LIMIT:5}
-  user-daily-limit: ${CONVERSION_USER_DAILY_LIMIT:15}
+  guest-daily-limit: ${CONVERSION_GUEST_DAILY_LIMIT:2}
+  user-daily-limit: ${CONVERSION_USER_DAILY_LIMIT:10}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging:
@@ -98,3 +104,16 @@ logging:
     org.springframework.web: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    mail:
+      enabled: false
