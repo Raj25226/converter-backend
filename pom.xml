@@ -9,7 +9,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.5.16</version>
+		<version>4.1.1</version>
 		<relativePath/>
 	</parent>
 
@@ -20,16 +20,35 @@
 	<description>Production-grade File Converter Backend</description>
 
 	<properties>
-		<java.version>21</java.version>
-        <lombok.version>1.18.42</lombok.version>
+		<java.version>25</java.version>
+        <lombok.version>1.18.48</lombok.version>
 		<twelvemonkeys.version>3.15.3</twelvemonkeys.version>
+		<!-- Patched releases newer than Boot's managed baseline. -->
+		<tomcat.version>11.0.27</tomcat.version>
+		<jackson-bom.version>3.2.3</jackson-bom.version>
+		<!-- JJWT still requires Jackson 2 at runtime. -->
+		<jackson-2-bom.version>2.22.3</jackson-2-bom.version>
+		<logback.version>1.6.5</logback.version>
+		<postgresql.version>42.7.14</postgresql.version>
+		<asm.version>9.11</asm.version>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- ASM is pulled in by the JSONPath test dependencies, outside Boot's BOM. -->
+			<dependency>
+				<groupId>org.ow2.asm</groupId>
+				<artifactId>asm</artifactId>
+				<version>${asm.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<dependencies>
 		<!-- ===== Web ===== -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
+			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
 		<!-- ===== Security ===== -->
@@ -65,18 +84,18 @@
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt-api</artifactId>
-			<version>0.12.6</version>
+			<version>0.13.0</version>
 		</dependency>
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt-impl</artifactId>
-			<version>0.12.6</version>
+			<version>0.13.0</version>
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt-jackson</artifactId>
-			<version>0.12.6</version>
+			<version>0.13.0</version>
 			<scope>runtime</scope>
 		</dependency>
 
@@ -84,7 +103,7 @@
 		<dependency>
 			<groupId>com.google.api-client</groupId>
 			<artifactId>google-api-client</artifactId>
-			<version>2.2.0</version>
+			<version>2.9.1</version>
 		</dependency>
 
 		<!-- ===== PDF Processing ===== -->
@@ -151,19 +170,32 @@
 			<optional>true</optional>
 		</dependency>
 
-		<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
-		<dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
-        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
-        <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
-        <!-- ===== Tests ===== -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- ===== Tests ===== -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>org.springframework.security</groupId>
-			<artifactId>spring-security-test</artifactId>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 	<dependency>

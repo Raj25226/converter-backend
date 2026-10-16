@@ -8,7 +8,6 @@ import com.converter.conversion.*;
 import com.converter.dto.ConversionResponse;
 import com.converter.exception.ConversionBusyException;
 import com.converter.service.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,6 +22,7 @@ import org.springframework.jdbc.datasource.*;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 class ConversionJobServiceTest {
     @TempDir Path directory;
@@ -58,7 +58,7 @@ class ConversionJobServiceTest {
                             }
                             return result;
                         });
-        var json = new ObjectMapper().findAndRegisterModules();
+        var json = new ObjectMapper();
         var jobs =
                 new ConversionJobService(
                         jdbc,
@@ -115,7 +115,7 @@ class ConversionJobServiceTest {
                         conversions,
                         settings,
                         new JobSettings(),
-                        new ObjectMapper().findAndRegisterModules(),
+                        new ObjectMapper(),
                         directory);
         ReflectionTestUtils.setField(jobs, "maxFileMb", 50);
         try {

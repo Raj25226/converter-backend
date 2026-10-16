@@ -1,11 +1,11 @@
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+FROM maven:3.9.11-eclipse-temurin-25 AS build
 WORKDIR /app
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 COPY src ./src
 RUN mvn -B -q clean package -DskipTests
 
-FROM eclipse-temurin:21-jre-noble
+FROM eclipse-temurin:25-jre-noble
 ENV TZ=UTC JAVA_TOOL_OPTIONS="-Duser.timezone=UTC -Djava.awt.headless=true" IMAGEMAGICK_BINARY=convert
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ffmpeg imagemagick libheif-plugin-libde265 \

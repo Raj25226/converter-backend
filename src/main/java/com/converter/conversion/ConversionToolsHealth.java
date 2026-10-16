@@ -2,7 +2,7 @@ package com.converter.conversion;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import org.springframework.boot.actuate.health.*;
+import org.springframework.boot.health.contributor.*;
 import org.springframework.stereotype.Component;
 
 @Component("conversionTools")

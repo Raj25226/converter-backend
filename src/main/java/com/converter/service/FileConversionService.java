@@ -3,8 +3,6 @@ package com.converter.service;
 import com.converter.conversion.*;
 import com.converter.exception.AppException;
 import com.converter.exception.ConversionException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -30,6 +28,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Conversion outputs are staged, validated and published only after successful processing. */
 @Service

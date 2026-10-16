@@ -1,6 +1,6 @@
 # Unimorpher
 
-Unimorpher converts documents, images, audio, video, and archives. This repository contains the Java 21 / Spring Boot backend. The Next.js frontend lives in the sibling `../converter-frontend` repository.
+Unimorpher converts documents, images, audio, video, and archives. This repository contains the Java 25 / Spring Boot 4.1 backend. The Next.js frontend lives in the sibling `../converter-frontend` repository.
 
 Guests can convert without signing in. Accounts add email verification, Google sign-in, profile settings, password recovery, and conversion history. Administrators can inspect usage, search users, change roles, suspend accounts, and delete users with their associated history.
 
@@ -100,7 +100,7 @@ The first administrator must be provisioned by a database operator after creatin
 ## Local development and checks
 
 ```sh
-# Backend: Java 21 or a compatible newer JDK; PostgreSQL required to run the app.
+# Backend: Java 25 or a compatible newer JDK; PostgreSQL required to run the app.
 # Export configuration from .env through your development environment.
 sh mvnw test
 sh mvnw spring-boot:run
@@ -123,6 +123,26 @@ Backend tests exercise all 15 routes using real native tools. Fidelity regressio
 To run the actual PostgreSQL quota concurrency/reset tests, point `QUOTA_TEST_DATABASE_URL`, `QUOTA_TEST_DATABASE_USER`, and `QUOTA_TEST_DATABASE_PASSWORD` at an isolated test database, then run `sh mvnw test`. These tests create and remove a uniquely named test schema. GitHub Actions provides PostgreSQL and runs these checks automatically. Without these variables, the two PostgreSQL tests are skipped.
 
 ## Deployment considerations
+
+The backend builds and runs on Java 25 with Spring Boot 4.1.1. Use a Java 25 JDK
+for Maven and configure the IDE's project SDK accordingly. Docker and CI also use
+Java 25. Application JSON uses Jackson 3; JJWT retains a separately patched
+Jackson 2 runtime dependency. Tomcat, both Jackson BOMs, Logback, and PostgreSQL
+JDBC have explicit security overrides newer than Boot's managed baseline. ASM,
+pulled in by JSONPath's test dependencies, is pinned through dependency management.
+
+To check resolved application and test dependencies against OSV:
+
+```bash
+sh mvnw dependency:list -DoutputFile=target/dependencies-audit.txt
+python3 scripts/audit-dependencies.py target/dependencies-audit.txt
+```
+
+The audit requires network access and sends only public package names and
+versions. It exits unsuccessfully on advisory matches or an incomplete audit.
+Results describe advisories known to OSV at scan time; other scanners may report
+additional findings. Also review IDE/dependency scanner findings and scan container
+OS packages separately as part of release verification.
 
 The Docker backend installs FFmpeg, ImageMagick with HEIC support, LibreOffice Writer/Calc/Impress/Draw (including PDF import), Noto/Liberation fonts, and an sRGB ICC profile, and runs as a non-root user. Compose defaults to a 2GiB backend memory limit, 256 processes, and two CPUs; adjust `BACKEND_MEMORY_LIMIT`, the Compose CPU setting, and conversion concurrency together for your workload. Docker images and media executables need to be smoke-tested with representative files before a release. OAuth/SMTP need a test using real configured providers.
 

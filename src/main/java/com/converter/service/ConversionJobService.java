@@ -3,7 +3,6 @@ package com.converter.service;
 import com.converter.conversion.*;
 import com.converter.dto.*;
 import com.converter.exception.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +21,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Durable, bounded jobs. Uploads survive HTTP disconnects; quota is reserved once at acceptance.
@@ -440,7 +441,7 @@ public class ConversionJobService {
                     job.updated,
                     result,
                     error);
-        } catch (IOException failure) {
+        } catch (JacksonException failure) {
             throw new IllegalStateException("Invalid persisted conversion result", failure);
         }
     }
