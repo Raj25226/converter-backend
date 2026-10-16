@@ -2,6 +2,7 @@ package com.converter.service;
 
 import com.converter.conversion.ConversionSettings;
 import com.converter.conversion.UploadValidation;
+import com.converter.dto.AdminStatsResponse.SystemConfiguration;
 import com.converter.dto.ConversionHistoryResponse;
 import com.converter.dto.ConversionResponse;
 import com.converter.entity.Conversion;
@@ -35,6 +36,11 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @Slf4j
 public class ConversionService {
+
+    public SystemConfiguration getSystemConfiguration() {
+        return new SystemConfiguration(
+                guestDailyLimit, userDailyLimit, maxFileSizeMb, expiryMinutes);
+    }
 
     private final FileConversionService fileConversionService;
     private final ConversionRepository conversionRepository;

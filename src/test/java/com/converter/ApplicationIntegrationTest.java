@@ -58,8 +58,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -76,6 +78,9 @@ import tools.jackson.databind.ObjectMapper;
             "jwt.secret=integration-test-only-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "jobs.poll-interval-ms=3600000",
             "conversion.native-health-enabled=false",
+            "conversion.user-daily-limit=100",
+            "file.max-size-mb=73",
+            "file.expiry-minutes=17",
             "spring.mail.username=",
             "spring.mail.password=",
             "file.output-dir=/tmp/converter-integration/outputs",
@@ -83,6 +88,14 @@ import tools.jackson.databind.ObjectMapper;
         })
 @AutoConfigureMockMvc
 class ApplicationIntegrationTest {
+    @Autowired ApplicationContext applicationContext;
+
+    @Test
+    void defaultInMemorySecurityUserIsNotCreated() {
+        Assertions.assertTrue(
+                applicationContext.getBeansOfType(UserDetailsService.class).isEmpty());
+    }
+
     @Autowired MockMvc mvc;
     @Autowired ConversionJobService conversionJobService;
     @Autowired JobSettings jobSettings;
@@ -371,6 +384,21 @@ class ApplicationIntegrationTest {
         mvc.perform(get("/api/convert/quota"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.limit").value(2));
+    }
+
+    @Test
+    void adminConfigurationReflectsEffectiveConversionSettings() throws Exception {
+        var admin = new User("config-admin@example.test", null, "Config", "Admin");
+        admin.setRole(User.Role.ADMIN);
+        admin = userRepository.saveAndFlush(admin);
+        mvc.perform(
+                        get("/api/admin/stats")
+                                .header("Authorization", "Bearer " + jwtUtil.generateToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.systemConfiguration.guestDailyLimit").value(2))
+                .andExpect(jsonPath("$.systemConfiguration.userDailyLimit").value(100))
+                .andExpect(jsonPath("$.systemConfiguration.maxFileSizeMb").value(73))
+                .andExpect(jsonPath("$.systemConfiguration.expiryMinutes").value(17));
     }
 
     @Test

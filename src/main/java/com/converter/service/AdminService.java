@@ -66,6 +66,7 @@ public class AdminService {
                 .conversionRate(rate)
                 .totalUsers(totalUsers)
                 .toolStats(toolStatDtos)
+                .systemConfiguration(conversionService.getSystemConfiguration())
                 .build();
     }
 

@@ -25,6 +25,11 @@ public class AdminStatsResponse {
     // Tool breakdown
     private List<ToolStatDto> toolStats;
 
+    private SystemConfiguration systemConfiguration;
+
+    public record SystemConfiguration(
+            int guestDailyLimit, int userDailyLimit, int maxFileSizeMb, int expiryMinutes) {}
+
     @Data
     @Builder
     public static class ToolStatDto {
