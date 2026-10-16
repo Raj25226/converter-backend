@@ -8,26 +8,26 @@ import com.converter.repository.EmailTokenRepository;
 import com.converter.repository.UserRepository;
 import com.converter.util.JwtUtil;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.UUID;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
-    @org.springframework.beans.factory.annotation.Value("${auth.verification-expiry-hours}")
+    @Value("${auth.verification-expiry-hours}")
     private long verificationExpiryHours;
-    @org.springframework.beans.factory.annotation.Value("${auth.reset-expiry-hours}")
-    private long resetExpiryHours;
 
+    @Value("${auth.reset-expiry-hours}")
+    private long resetExpiryHours;
 
     private final UserRepository userRepository;
     private final EmailTokenRepository emailTokenRepository;
@@ -48,22 +48,26 @@ public class AuthService {
             throw new AppException("Email already registered", HttpStatus.CONFLICT);
         }
 
-        User user = new User(
-                email,
-                passwordEncoder.encode(req.getPassword()),
-                req.getFirstName().trim(),
-                req.getLastName().trim()
-        );
+        User user =
+                new User(
+                        email,
+                        passwordEncoder.encode(req.getPassword()),
+                        req.getFirstName().trim(),
+                        req.getLastName().trim());
         user.setEmailVerified(false);
         user.setActive(true);
         user = userRepository.save(user);
 
-        String token = generateEmailToken(user, EmailToken.TokenType.VERIFY_EMAIL,
-                Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
+        String token =
+                generateEmailToken(
+                        user,
+                        EmailToken.TokenType.VERIFY_EMAIL,
+                        Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
         emailService.sendVerificationEmail(user.getEmail(), token);
 
         log.info("Signup successful: userId=[{}] email=[{}]", user.getId(), email);
-        return ApiResponse.success("Account created. Please check your email to verify your account.");
+        return ApiResponse.success(
+                "Account created. Please check your email to verify your account.");
     }
 
     // ─── Login ───────────────────────────────────────────────────────────────
@@ -73,11 +77,15 @@ public class AuthService {
         log.info("Login attempt for email=[{}]", email);
 
         // ✅ Uses findByEmailAndActiveTrue (matches renamed field 'active' in User entity)
-        User user = userRepository.findByEmailAndActiveTrue(email)
-                .orElseThrow(() -> {
-                    log.warn("Login failed: no active user for email=[{}]", email);
-                    return new AppException("Invalid email or password", HttpStatus.UNAUTHORIZED);
-                });
+        User user =
+                userRepository
+                        .findByEmailAndActiveTrue(email)
+                        .orElseThrow(
+                                () -> {
+                                    log.warn("Login failed: no active user for email=[{}]", email);
+                                    return new AppException(
+                                            "Invalid email or password", HttpStatus.UNAUTHORIZED);
+                                });
 
         if (user.getPasswordHash() == null) {
             log.warn("Login failed: user=[{}] is a Google OAuth account, has no password", email);
@@ -109,7 +117,8 @@ public class AuthService {
 
         if (!googleAuthService.isConfigured()) {
             log.error("Google OAuth not configured: GOOGLE_CLIENT_ID is not set");
-            throw new AppException("Google OAuth is not configured on this server",
+            throw new AppException(
+                    "Google OAuth is not configured on this server",
                     HttpStatus.SERVICE_UNAVAILABLE);
         }
 
@@ -124,14 +133,15 @@ public class AuthService {
             throw new AppException(e.getMessage(), HttpStatus.SERVICE_UNAVAILABLE);
         } catch (Exception e) {
             log.error("Unexpected Google token verification error", e);
-            throw new AppException("Failed to verify Google credential. Please try again.",
+            throw new AppException(
+                    "Failed to verify Google credential. Please try again.",
                     HttpStatus.UNAUTHORIZED);
         }
 
-        String email     = payload.getEmail().toLowerCase().trim();
+        String email = payload.getEmail().toLowerCase().trim();
         String firstName = (String) payload.get("given_name");
-        String lastName  = (String) payload.get("family_name");
-        String picture   = (String) payload.get("picture");
+        String lastName = (String) payload.get("family_name");
+        String picture = (String) payload.get("picture");
 
         log.info("Google token verified for email=[{}]", email);
 
@@ -142,7 +152,7 @@ public class AuthService {
             user.setEmail(email);
             user.setPasswordHash(null);
             user.setFirstName(firstName != null ? firstName.trim() : "User");
-            user.setLastName(lastName  != null ? lastName.trim()  : "");
+            user.setLastName(lastName != null ? lastName.trim() : "");
             user.setEmailVerified(true);
             user.setPicture(picture);
             user.setRole(User.Role.USER);
@@ -151,17 +161,30 @@ public class AuthService {
             log.info("New Google user created: userId=[{}] email=[{}]", user.getId(), email);
         } else {
             boolean changed = false;
-            if (!user.isEmailVerified())               { user.setEmailVerified(true); changed = true; }
-            if (firstName != null && !firstName.equals(user.getFirstName())) { user.setFirstName(firstName.trim()); changed = true; }
-            if (lastName  != null && !lastName.equals(user.getLastName()))   { user.setLastName(lastName.trim());   changed = true; }
-            if (picture   != null && !picture.equals(user.getPicture()))      { user.setPicture(picture);            changed = true; }
+            if (!user.isEmailVerified()) {
+                user.setEmailVerified(true);
+                changed = true;
+            }
+            if (firstName != null && !firstName.equals(user.getFirstName())) {
+                user.setFirstName(firstName.trim());
+                changed = true;
+            }
+            if (lastName != null && !lastName.equals(user.getLastName())) {
+                user.setLastName(lastName.trim());
+                changed = true;
+            }
+            if (picture != null && !picture.equals(user.getPicture())) {
+                user.setPicture(picture);
+                changed = true;
+            }
             if (changed) user = userRepository.save(user);
             log.info("Existing Google user logged in: userId=[{}] email=[{}]", user.getId(), email);
         }
 
         if (!user.isActive()) {
             log.warn("Google login rejected: userId=[{}] is suspended", user.getId());
-            throw new AppException("Your account has been suspended. Please contact support.",
+            throw new AppException(
+                    "Your account has been suspended. Please contact support.",
                     HttpStatus.FORBIDDEN);
         }
 
@@ -175,14 +198,20 @@ public class AuthService {
     public ApiResponse verifyEmail(String token) {
         log.debug("Email verification requested");
 
-        EmailToken emailToken = emailTokenRepository.findByToken(token)
-                .orElseThrow(() -> {
-                    log.warn("Email verification failed: token not found");
-                    return new AppException("Invalid or expired verification link", HttpStatus.BAD_REQUEST);
-                });
+        EmailToken emailToken =
+                emailTokenRepository
+                        .findByToken(token)
+                        .orElseThrow(
+                                () -> {
+                                    log.warn("Email verification failed: token not found");
+                                    return new AppException(
+                                            "Invalid or expired verification link",
+                                            HttpStatus.BAD_REQUEST);
+                                });
 
         if (!emailToken.isValid() || emailToken.getType() != EmailToken.TokenType.VERIFY_EMAIL) {
-            log.warn("Email verification failed: token invalid or wrong type for userId=[{}]",
+            log.warn(
+                    "Email verification failed: token invalid or wrong type for userId=[{}]",
                     emailToken.getUser().getId());
             throw new AppException("Invalid or expired verification link", HttpStatus.BAD_REQUEST);
         }
@@ -203,19 +232,33 @@ public class AuthService {
         String email = req.getEmail().toLowerCase().trim();
         log.info("Resend verification requested for email=[{}]", email);
 
-        userRepository.findByEmail(email).ifPresent(user -> {
-            if (!user.isEmailVerified()) {
-                emailTokenRepository.deleteByUserIdAndType(user.getId(), EmailToken.TokenType.VERIFY_EMAIL);
-                String token = generateEmailToken(user, EmailToken.TokenType.VERIFY_EMAIL,
-                        Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
-                emailService.sendVerificationEmail(user.getEmail(), token);
-                log.info("Verification email resent to userId=[{}] email=[{}]", user.getId(), email);
-            } else {
-                log.debug("Resend skipped: email=[{}] already verified", email);
-            }
-        });
+        userRepository
+                .findByEmail(email)
+                .ifPresent(
+                        user -> {
+                            if (!user.isEmailVerified()) {
+                                emailTokenRepository.deleteByUserIdAndType(
+                                        user.getId(), EmailToken.TokenType.VERIFY_EMAIL);
+                                String token =
+                                        generateEmailToken(
+                                                user,
+                                                EmailToken.TokenType.VERIFY_EMAIL,
+                                                Instant.now()
+                                                        .plus(
+                                                                verificationExpiryHours,
+                                                                ChronoUnit.HOURS));
+                                emailService.sendVerificationEmail(user.getEmail(), token);
+                                log.info(
+                                        "Verification email resent to userId=[{}] email=[{}]",
+                                        user.getId(),
+                                        email);
+                            } else {
+                                log.debug("Resend skipped: email=[{}] already verified", email);
+                            }
+                        });
 
-        return ApiResponse.success("If your account exists and is unverified, a verification email has been sent.");
+        return ApiResponse.success(
+                "If your account exists and is unverified, a verification email has been sent.");
     }
 
     // ─── Password Reset ──────────────────────────────────────────────────────
@@ -225,30 +268,47 @@ public class AuthService {
         String email = req.getEmail().toLowerCase().trim();
         log.info("Password reset requested for email=[{}]", email);
 
-        userRepository.findByEmail(email).ifPresent(user -> {
-            emailTokenRepository.deleteByUserIdAndType(user.getId(), EmailToken.TokenType.RESET_PASSWORD);
-            String token = generateEmailToken(user, EmailToken.TokenType.RESET_PASSWORD,
-                    Instant.now().plus(resetExpiryHours, ChronoUnit.HOURS));
-            emailService.sendPasswordResetEmail(user.getEmail(), token);
-            log.info("Password reset email sent to userId=[{}] email=[{}]", user.getId(), email);
-        });
+        userRepository
+                .findByEmail(email)
+                .ifPresent(
+                        user -> {
+                            emailTokenRepository.deleteByUserIdAndType(
+                                    user.getId(), EmailToken.TokenType.RESET_PASSWORD);
+                            String token =
+                                    generateEmailToken(
+                                            user,
+                                            EmailToken.TokenType.RESET_PASSWORD,
+                                            Instant.now().plus(resetExpiryHours, ChronoUnit.HOURS));
+                            emailService.sendPasswordResetEmail(user.getEmail(), token);
+                            log.info(
+                                    "Password reset email sent to userId=[{}] email=[{}]",
+                                    user.getId(),
+                                    email);
+                        });
 
-        return ApiResponse.success("If that email is registered, a password reset link has been sent.");
+        return ApiResponse.success(
+                "If that email is registered, a password reset link has been sent.");
     }
 
     @Transactional
     public ApiResponse resetPassword(ResetPasswordRequest req) {
         log.debug("Password reset requested");
 
-        EmailToken emailToken = emailTokenRepository.findByToken(req.getToken())
-                .orElseThrow(() -> {
-                    log.warn("Password reset failed: token not found");
-                    return new AppException("Invalid or expired reset link", HttpStatus.BAD_REQUEST);
-                });
+        EmailToken emailToken =
+                emailTokenRepository
+                        .findByToken(req.getToken())
+                        .orElseThrow(
+                                () -> {
+                                    log.warn("Password reset failed: token not found");
+                                    return new AppException(
+                                            "Invalid or expired reset link",
+                                            HttpStatus.BAD_REQUEST);
+                                });
 
         if (!emailToken.isValid() || emailToken.getType() != EmailToken.TokenType.RESET_PASSWORD) {
             log.warn("Password reset failed: token invalid or wrong type");
-            throw new AppException("Invalid or expired reset link. Please request a new one.",
+            throw new AppException(
+                    "Invalid or expired reset link. Please request a new one.",
                     HttpStatus.BAD_REQUEST);
         }
 
@@ -260,7 +320,10 @@ public class AuthService {
         emailToken.setUsed(true);
         emailTokenRepository.save(emailToken);
 
-        log.info("Password reset successful for userId=[{}] email=[{}]", user.getId(), user.getEmail());
+        log.info(
+                "Password reset successful for userId=[{}] email=[{}]",
+                user.getId(),
+                user.getEmail());
         return ApiResponse.success("Password reset successfully. You can now log in.");
     }
 
@@ -270,8 +333,11 @@ public class AuthService {
     public AuthResponse updateProfile(Long userId, UpdateProfileRequest req) {
         log.info("Profile update for userId=[{}]", userId);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> new AppException("User not found", HttpStatus.NOT_FOUND));
 
         if (req.getFirstName() != null && !req.getFirstName().isBlank()) {
             user.setFirstName(req.getFirstName().trim());
@@ -287,15 +353,23 @@ public class AuthService {
             if (!newEmail.equals(user.getEmail())) {
                 if (userRepository.existsByEmail(newEmail)) {
                     log.warn("Profile update rejected: email=[{}] already in use", newEmail);
-                    throw new AppException("Email already in use by another account", HttpStatus.CONFLICT);
+                    throw new AppException(
+                            "Email already in use by another account", HttpStatus.CONFLICT);
                 }
                 user.setEmail(newEmail);
                 user.setEmailVerified(false);
-                emailTokenRepository.deleteByUserIdAndType(userId, EmailToken.TokenType.VERIFY_EMAIL);
-                String token = generateEmailToken(user, EmailToken.TokenType.VERIFY_EMAIL,
-                        Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
+                emailTokenRepository.deleteByUserIdAndType(
+                        userId, EmailToken.TokenType.VERIFY_EMAIL);
+                String token =
+                        generateEmailToken(
+                                user,
+                                EmailToken.TokenType.VERIFY_EMAIL,
+                                Instant.now().plus(verificationExpiryHours, ChronoUnit.HOURS));
                 emailService.sendVerificationEmail(newEmail, token);
-                log.info("Email changed for userId=[{}]: new verification email sent to [{}]", userId, newEmail);
+                log.info(
+                        "Email changed for userId=[{}]: new verification email sent to [{}]",
+                        userId,
+                        newEmail);
             }
         }
 
@@ -317,8 +391,11 @@ public class AuthService {
     public ApiResponse changePassword(Long userId, ChangePasswordRequest req) {
         log.info("Password change attempt for userId=[{}]", userId);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> new AppException("User not found", HttpStatus.NOT_FOUND));
 
         if (user.getPasswordHash() == null) {
             log.warn("Password change rejected: userId=[{}] is a Google OAuth account", userId);
@@ -333,7 +410,8 @@ public class AuthService {
         }
 
         if (req.getCurrentPassword().equals(req.getNewPassword())) {
-            throw new AppException("New password must be different from the current password",
+            throw new AppException(
+                    "New password must be different from the current password",
                     HttpStatus.BAD_REQUEST);
         }
 
@@ -348,11 +426,16 @@ public class AuthService {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private String generateEmailToken(User user, EmailToken.TokenType type, Instant expiresAt) {
-        String rawToken = UUID.randomUUID().toString().replace("-", "") +
-                UUID.randomUUID().toString().replace("-", "");
+        String rawToken =
+                UUID.randomUUID().toString().replace("-", "")
+                        + UUID.randomUUID().toString().replace("-", "");
         EmailToken emailToken = new EmailToken(user, rawToken, type, expiresAt);
         emailTokenRepository.save(emailToken);
-        log.debug("Email token created: type=[{}] userId=[{}] expires=[{}]", type, user.getId(), expiresAt);
+        log.debug(
+                "Email token created: type=[{}] userId=[{}] expires=[{}]",
+                type,
+                user.getId(),
+                expiresAt);
         return rawToken;
     }
 
@@ -369,7 +452,8 @@ public class AuthService {
     }
 
     public User getUserById(Long userId) {
-        return userRepository.findById(userId)
+        return userRepository
+                .findById(userId)
                 .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
     }
 }

@@ -28,7 +28,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.pdfToWord(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.pdfToWord(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/word-to-pdf", consumes = "multipart/form-data")
@@ -37,7 +39,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.wordToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.wordToPdf(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/pdf-to-excel", consumes = "multipart/form-data")
@@ -46,7 +50,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.pdfToExcel(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.pdfToExcel(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/excel-to-pdf", consumes = "multipart/form-data")
@@ -55,7 +61,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.excelToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.excelToPdf(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/ppt-to-pdf", consumes = "multipart/form-data")
@@ -64,7 +72,8 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.pptToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.pptToPdf(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     // ─── Images ──────────────────────────────────────────────────────────────
@@ -75,7 +84,8 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.jpgToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.jpgToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/png-to-jpg", consumes = "multipart/form-data")
@@ -84,7 +94,8 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.pngToJpg(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.pngToJpg(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/jpg-to-webp", consumes = "multipart/form-data")
@@ -93,7 +104,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.jpgToWebp(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.jpgToWebp(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/webp-to-png", consumes = "multipart/form-data")
@@ -102,7 +115,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.webpToPng(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.webpToPng(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/heic-to-jpg", consumes = "multipart/form-data")
@@ -111,7 +126,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.heicToJpg(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.heicToJpg(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     // ─── Media ───────────────────────────────────────────────────────────────
@@ -122,7 +139,8 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.mp4ToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.mp4ToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/mp4-to-gif", consumes = "multipart/form-data")
@@ -131,7 +149,8 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.mp4ToGif(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.mp4ToGif(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/wav-to-mp3", consumes = "multipart/form-data")
@@ -140,7 +159,8 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.wavToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.wavToMp3(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     // ─── Utilities ───────────────────────────────────────────────────────────
@@ -151,7 +171,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.zipExtract(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.zipExtract(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     @PostMapping(value = "/file-compress", consumes = "multipart/form-data")
@@ -160,7 +182,9 @@ public class ConversionController {
             Authentication auth,
             @RequestParam(required = false) String sessionId,
             HttpServletRequest req) {
-        return ok(conversionService.fileCompress(file, userId(auth), sessionId, ipUtil.getClientIp(req)));
+        return ok(
+                conversionService.fileCompress(
+                        file, userId(auth), sessionId, ipUtil.getClientIp(req)));
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

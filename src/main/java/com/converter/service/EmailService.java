@@ -13,13 +13,13 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
-    @org.springframework.beans.factory.annotation.Value("${auth.verification-expiry-hours}")
+    @Value("${auth.verification-expiry-hours}")
     private long verificationExpiryHours;
-    @org.springframework.beans.factory.annotation.Value("${auth.reset-expiry-hours}")
+
+    @Value("${auth.reset-expiry-hours}")
     private long resetExpiryHours;
 
-
-    private final JavaMailSender mailSender;
+    private final JavaMailSender javaMailSender;
 
     @Value("${app.mail-from}")
     private String fromEmail;
@@ -30,46 +30,48 @@ public class EmailService {
     @Async
     public void sendVerificationEmail(String toEmail, String token) {
         String link = frontendUrl + "/verify-email?token=" + token;
-        String html = buildEmailHtml(
-                "Verify Your Email",
-                "Welcome to FileConvert Pro!",
-                "Please click the button below to verify your email address. This link expires in %d hours.".formatted(verificationExpiryHours),
-                link,
-                "Verify Email"
-        );
+        String html =
+                buildEmailHtml(
+                        "Verify Your Email",
+                        "Welcome to FileConvert Pro!",
+                        "Please click the button below to verify your email address. This link expires in %d hours."
+                                .formatted(verificationExpiryHours),
+                        link,
+                        "Verify Email");
         sendHtmlEmail(toEmail, "Verify Your Email - FileConvert Pro", html);
     }
 
     @Async
     public void sendPasswordResetEmail(String toEmail, String token) {
         String link = frontendUrl + "/reset-password?token=" + token;
-        String html = buildEmailHtml(
-                "Reset Your Password",
-                "Password Reset Request",
-                "You requested a password reset. Click below to set a new password. This link expires in %d hours. If you didn't request this, ignore this email.".formatted(resetExpiryHours),
-                link,
-                "Reset Password"
-        );
+        String html =
+                buildEmailHtml(
+                        "Reset Your Password",
+                        "Password Reset Request",
+                        "You requested a password reset. Click below to set a new password. This link expires in %d hours. If you didn't request this, ignore this email."
+                                .formatted(resetExpiryHours),
+                        link,
+                        "Reset Password");
         sendHtmlEmail(toEmail, "Reset Your Password - FileConvert Pro", html);
     }
 
     private void sendHtmlEmail(String to, String subject, String htmlContent) {
         try {
-            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessage message = javaMailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromEmail);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(htmlContent, true);
-            mailSender.send(message);
+            javaMailSender.send(message);
             log.info("Email sent to {}", to);
         } catch (Exception e) {
             log.error("Email delivery failed", e);
         }
     }
 
-    private String buildEmailHtml(String title, String heading, String body,
-                                  String actionUrl, String actionLabel) {
+    private String buildEmailHtml(
+            String title, String heading, String body, String actionUrl, String actionLabel) {
         return """
             <!DOCTYPE html>
             <html>
@@ -101,6 +103,7 @@ public class EmailService {
               </div>
             </body>
             </html>
-            """.formatted(heading, body, actionUrl, actionLabel, actionUrl, actionUrl);
+            """
+                .formatted(heading, body, actionUrl, actionLabel, actionUrl, actionUrl);
     }
 }

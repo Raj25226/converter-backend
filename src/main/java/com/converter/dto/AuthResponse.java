@@ -40,16 +40,10 @@ public class AuthResponse {
     }
 
     public static AuthResponse unverified() {
-        return AuthResponse.builder()
-                .status("success")
-                .emailVerified(false)
-                .build();
+        return AuthResponse.builder().status("success").emailVerified(false).build();
     }
 
     public static AuthResponse error(String message) {
-        return AuthResponse.builder()
-                .status("error")
-                .message(message)
-                .build();
+        return AuthResponse.builder().status("error").message(message).build();
     }
 }

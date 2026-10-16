@@ -1,18 +1,18 @@
 package com.converter.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
-
-import java.time.Instant;
 
 @Entity
-@Table(name = "email_tokens", indexes = {
-        @Index(name = "idx_email_tokens_token", columnList = "token", unique = true),
-        @Index(name = "idx_email_tokens_user_id", columnList = "user_id")
-})
+@Table(
+        name = "email_tokens",
+        indexes = {
+            @Index(name = "idx_email_tokens_token", columnList = "token", unique = true),
+            @Index(name = "idx_email_tokens_user_id", columnList = "user_id")
+        })
 @Getter
 @Setter
 @NoArgsConstructor

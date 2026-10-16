@@ -4,14 +4,13 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.Collections;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
@@ -20,7 +19,7 @@ public class GoogleAuthService {
     @Value("${google.client-id}")
     private String googleClientId;
 
-    private GoogleIdTokenVerifier verifier;
+    private GoogleIdTokenVerifier googleIdTokenVerifier;
 
     @PostConstruct
     public void init() {
@@ -28,12 +27,13 @@ public class GoogleAuthService {
             log.warn("Google Client ID not configured — Google OAuth will be disabled");
             return;
         }
-        verifier = new GoogleIdTokenVerifier.Builder(
-                new NetHttpTransport(),
-                GsonFactory.getDefaultInstance())
-                .setAudience(Collections.singletonList(googleClientId))
-                .build();
-        log.info("Google OAuth initialized with client ID: {}...{}",
+        googleIdTokenVerifier =
+                new GoogleIdTokenVerifier.Builder(
+                                new NetHttpTransport(), GsonFactory.getDefaultInstance())
+                        .setAudience(Collections.singletonList(googleClientId))
+                        .build();
+        log.info(
+                "Google OAuth initialized with client ID: {}...{}",
                 googleClientId.substring(0, Math.min(10, googleClientId.length())),
                 googleClientId.length() > 20
                         ? googleClientId.substring(googleClientId.length() - 8)
@@ -53,7 +53,7 @@ public class GoogleAuthService {
     public GoogleIdToken.Payload verifyToken(String idTokenString)
             throws GeneralSecurityException, IOException {
 
-        if (verifier == null) {
+        if (googleIdTokenVerifier == null) {
             throw new IllegalStateException(
                     "Google OAuth is not configured. Set GOOGLE_CLIENT_ID environment variable.");
         }
@@ -62,11 +62,11 @@ public class GoogleAuthService {
             throw new IllegalArgumentException("Google credential token cannot be empty");
         }
 
-        GoogleIdToken idToken = verifier.verify(idTokenString);
+        GoogleIdToken idToken = googleIdTokenVerifier.verify(idTokenString);
         if (idToken == null) {
             throw new IllegalArgumentException(
-                    "Invalid Google credential: token verification failed. " +
-                            "Ensure the token is fresh and issued for this application.");
+                    "Invalid Google credential: token verification failed. "
+                            + "Ensure the token is fresh and issued for this application.");
         }
 
         GoogleIdToken.Payload payload = idToken.getPayload();
@@ -74,7 +74,8 @@ public class GoogleAuthService {
         // Extra safety — token must not be expired
         long nowSeconds = System.currentTimeMillis() / 1000;
         if (payload.getExpirationTimeSeconds() < nowSeconds) {
-            throw new IllegalArgumentException("Google credential has expired. Please sign in again.");
+            throw new IllegalArgumentException(
+                    "Google credential has expired. Please sign in again.");
         }
 
         // Email must be verified by Google
@@ -88,6 +89,6 @@ public class GoogleAuthService {
     }
 
     public boolean isConfigured() {
-        return verifier != null;
+        return googleIdTokenVerifier != null;
     }
 }

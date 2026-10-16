@@ -2,11 +2,10 @@ package com.converter.dto;
 
 import com.converter.entity.User;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Builder;
-import lombok.Data;
-
 import java.time.Instant;
 import java.util.List;
+import lombok.Builder;
+import lombok.Data;
 
 @Data
 @Builder

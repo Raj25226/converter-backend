@@ -12,8 +12,17 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "jobs")
 public class JobSettings {
     private boolean enabled = true;
-    @Min(1) @Max(1000) private int maxPending = 20;
-    @Min(1) private int retentionMinutes = 60;
-    @Min(1) private int queueTimeoutSeconds = 900;
-    @Min(1) private int uploadTimeoutSeconds = 300;
+
+    @Min(1)
+    @Max(1000)
+    private int maxPending = 20;
+
+    @Min(1)
+    private int retentionMinutes = 60;
+
+    @Min(1)
+    private int queueTimeoutSeconds = 900;
+
+    @Min(1)
+    private int uploadTimeoutSeconds = 300;
 }

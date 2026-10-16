@@ -3,15 +3,15 @@ package com.converter.util;
 import com.converter.entity.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
+import jakarta.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import javax.crypto.SecretKey;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 @Component
 @Slf4j
@@ -23,7 +23,7 @@ public class JwtUtil {
     @Value("${jwt.expiration-days}")
     private long expirationDays;
 
-    @jakarta.annotation.PostConstruct
+    @PostConstruct
     public void validateConfiguration() {
         if (jwtSecret == null || jwtSecret.getBytes(StandardCharsets.UTF_8).length < 64) {
             throw new IllegalStateException("JWT_SECRET must contain at least 64 bytes for HS512");

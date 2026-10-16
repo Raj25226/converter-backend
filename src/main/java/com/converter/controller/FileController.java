@@ -4,18 +4,22 @@ import com.converter.dto.ApiResponse;
 import com.converter.dto.ConversionHistoryResponse;
 import com.converter.entity.Conversion;
 import com.converter.service.ConversionService;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.io.File;
-import java.nio.file.Path;
 
 @RestController
 @Slf4j
@@ -25,10 +29,10 @@ public class FileController {
     private final Path outputPath;
 
     // ✅ Explicit constructor — @Qualifier does NOT work with @RequiredArgsConstructor on fields
-    public FileController(ConversionService conversionService,
-                          @Qualifier("outputPath") Path outputPath) {
+    public FileController(
+            ConversionService conversionService, @Qualifier("outputPath") Path outputPath) {
         this.conversionService = conversionService;
-        this.outputPath        = outputPath;
+        this.outputPath = outputPath;
     }
 
     // GET /api/download/:fileId — public, no auth required
@@ -56,7 +60,7 @@ public class FileController {
         File file = null;
         if (!ext.isEmpty()) {
             File candidate = outputPath.resolve(fileId + "." + ext).toFile();
-            if (java.nio.file.Files.isRegularFile(candidate.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isRegularFile(candidate.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 file = candidate;
                 log.debug("Found file by primary extension: {}.{}", fileId, ext);
             }
@@ -64,11 +68,15 @@ public class FileController {
 
         // Fallback: scan all known extensions
         if (file == null) {
-            for (String tryExt : new String[]{"pdf","docx","xlsx","pptx","png","jpg","webp","mp3","gif","zip","gz"}) {
+            for (String tryExt :
+                    new String[] {
+                        "pdf", "docx", "xlsx", "pptx", "png", "jpg", "webp", "mp3", "gif", "zip",
+                        "gz"
+                    }) {
                 File candidate = outputPath.resolve(fileId + "." + tryExt).toFile();
-                if (java.nio.file.Files.isRegularFile(candidate.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isRegularFile(candidate.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     file = candidate;
-                    ext  = tryExt;
+                    ext = tryExt;
                     log.debug("Found file by fallback extension: {}.{}", fileId, tryExt);
                     break;
                 }
@@ -80,16 +88,25 @@ public class FileController {
             return ResponseEntity.notFound().build();
         }
 
-        String contentType  = resolveContentType(ext);
+        String contentType = resolveContentType(ext);
         String safeFilename = sanitizeFilename(convertedName != null ? convertedName : fileId);
 
-        log.info("Download serving: fileId=[{}], name=[{}], size=[{}] bytes, type=[{}]",
-                fileId, safeFilename, file.length(), contentType);
+        log.info(
+                "Download serving: fileId=[{}], name=[{}], size=[{}] bytes, type=[{}]",
+                fileId,
+                safeFilename,
+                file.length(),
+                contentType);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header("X-Content-Type-Options", "nosniff")
-                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment().filename(safeFilename, java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(safeFilename, StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
                 .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(file.length())
                 .body(new FileSystemResource(file));
@@ -97,7 +114,10 @@ public class FileController {
 
     // GET /api/user/history — requires authentication
     @GetMapping("/api/user/history")
-    public ResponseEntity<ConversionHistoryResponse> getHistory(Authentication auth, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+    public ResponseEntity<ConversionHistoryResponse> getHistory(
+            Authentication auth,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         Long userId = (Long) auth.getPrincipal();
         log.debug("Conversion history requested for userId=[{}]", userId);
         return ResponseEntity.ok(conversionService.getUserHistory(userId, page, size));
@@ -117,24 +137,26 @@ public class FileController {
     private String resolveContentType(String ext) {
         if (ext == null) return "application/octet-stream";
         return switch (ext.toLowerCase()) {
-            case "pdf"        -> "application/pdf";
-            case "docx"       -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "xlsx"       -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            case "pptx"       -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            case "png"        -> "image/png";
-            case "jpg","jpeg" -> "image/jpeg";
-            case "webp"       -> "image/webp";
-            case "gif"        -> "image/gif";
-            case "mp3"        -> "audio/mpeg";
-            case "zip"        -> "application/zip";
-            case "gz"         -> "application/gzip";
-            default           -> "application/octet-stream";
+            case "pdf" -> "application/pdf";
+            case "docx" ->
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "pptx" ->
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "webp" -> "image/webp";
+            case "gif" -> "image/gif";
+            case "mp3" -> "audio/mpeg";
+            case "zip" -> "application/zip";
+            case "gz" -> "application/gzip";
+            default -> "application/octet-stream";
         };
     }
 
     /** Remove characters that could cause issues in Content-Disposition header. */
     private String sanitizeFilename(String name) {
         if (name == null || name.isBlank()) return "download";
-        return org.apache.commons.io.FilenameUtils.getName(name).replaceAll("[\\p{Cntrl}]", "_");
+        return FilenameUtils.getName(name).replaceAll("[\\p{Cntrl}]", "_");
     }
 }

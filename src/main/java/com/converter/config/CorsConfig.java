@@ -9,13 +9,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class CorsConfig implements WebMvcConfigurer {
     @Value("${cors.allowed-methods}")
     private String[] allowedMethods;
+
     @Value("${cors.allowed-headers}")
     private String[] allowedHeaders;
+
     @Value("${cors.exposed-headers}")
     private String[] exposedHeaders;
+
     @Value("${cors.allow-credentials}")
     private boolean allowCredentials;
-
 
     @Value("${cors.max-age-seconds}")
     private long maxAgeSeconds;

@@ -1,20 +1,20 @@
 package com.converter.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
-
-import java.time.Instant;
 
 @Entity
-@Table(name = "conversions", indexes = {
-        @Index(name = "idx_conversions_user_id", columnList = "user_id"),
-        @Index(name = "idx_conversions_session_id", columnList = "session_id"),
-        @Index(name = "idx_conversions_file_id", columnList = "file_id"),
-        @Index(name = "idx_conversions_expires_at", columnList = "expires_at")
-})
+@Table(
+        name = "conversions",
+        indexes = {
+            @Index(name = "idx_conversions_user_id", columnList = "user_id"),
+            @Index(name = "idx_conversions_session_id", columnList = "session_id"),
+            @Index(name = "idx_conversions_file_id", columnList = "file_id"),
+            @Index(name = "idx_conversions_expires_at", columnList = "expires_at")
+        })
 @Getter
 @Setter
 @NoArgsConstructor

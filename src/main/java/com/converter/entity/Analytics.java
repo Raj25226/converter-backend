@@ -1,10 +1,9 @@
 package com.converter.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
-
-import java.time.Instant;
 
 @Entity
 @Table(name = "analytics")
@@ -12,8 +11,7 @@ import java.time.Instant;
 @Setter
 public class Analytics {
 
-    @Id
-    private Long id = 1L;
+    @Id private Long id = 1L;
 
     @Column(name = "total_visits")
     private long totalVisits = 0;

@@ -1,16 +1,15 @@
 package com.converter.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
-
 @Entity
-@Table(name = "users", indexes = {
-        @Index(name = "idx_users_email", columnList = "email", unique = true)
-})
+@Table(
+        name = "users",
+        indexes = {@Index(name = "idx_users_email", columnList = "email", unique = true)})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -75,6 +74,7 @@ public class User {
     }
 
     public enum Role {
-        USER, ADMIN
+        USER,
+        ADMIN
     }
 }

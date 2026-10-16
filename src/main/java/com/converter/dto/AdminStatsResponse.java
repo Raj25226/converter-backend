@@ -1,10 +1,9 @@
 package com.converter.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
-
-import java.util.List;
 
 @Data
 @Builder
@@ -34,9 +33,6 @@ public class AdminStatsResponse {
     }
 
     public static AdminStatsResponse error(String message) {
-        return AdminStatsResponse.builder()
-                .status("error")
-                .message(message)
-                .build();
+        return AdminStatsResponse.builder().status("error").message(message).build();
     }
 }

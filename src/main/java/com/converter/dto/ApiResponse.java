@@ -13,16 +13,10 @@ public class ApiResponse {
     private String message;
 
     public static ApiResponse success(String message) {
-        return ApiResponse.builder()
-                .status("success")
-                .message(message)
-                .build();
+        return ApiResponse.builder().status("success").message(message).build();
     }
 
     public static ApiResponse error(String message) {
-        return ApiResponse.builder()
-                .status("error")
-                .message(message)
-                .build();
+        return ApiResponse.builder().status("error").message(message).build();
     }
 }

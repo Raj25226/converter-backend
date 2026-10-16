@@ -6,22 +6,23 @@ import com.converter.entity.ToolStat;
 import com.converter.repository.AnalyticsRepository;
 import com.converter.repository.ToolStatRepository;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AnalyticsService {
-    @org.springframework.beans.factory.annotation.Value("${analytics.max-tracked-sessions}")
+    @Value("${analytics.max-tracked-sessions}")
     private int maxTrackedSessions;
 
     private final AnalyticsRepository analyticsRepository;
@@ -30,17 +31,28 @@ public class AnalyticsService {
     private final AnalyticsWriter analyticsWriter;
 
     /**
-     * In-memory session deduplication (replaces Redis).
-     * Thread-safe. Resets on process restart — acceptable for single-instance deployments.
+     * In-memory session deduplication (replaces Redis). Thread-safe. Resets on process restart —
+     * acceptable for single-instance deployments.
      */
     private final ConcurrentHashMap<String, Boolean> seenSessions = new ConcurrentHashMap<>();
 
-    private static final List<String> ALL_TOOLS = Arrays.asList(
-            "pdf-to-word", "word-to-pdf", "pdf-to-excel", "excel-to-pdf", "ppt-to-pdf",
-            "jpg-to-png", "png-to-jpg", "jpg-to-webp", "webp-to-png", "heic-to-jpg",
-            "mp4-to-mp3", "mp4-to-gif", "wav-to-mp3",
-            "zip-extract", "file-compress"
-    );
+    private static final List<String> ALL_TOOLS =
+            Arrays.asList(
+                    "pdf-to-word",
+                    "word-to-pdf",
+                    "pdf-to-excel",
+                    "excel-to-pdf",
+                    "ppt-to-pdf",
+                    "jpg-to-png",
+                    "png-to-jpg",
+                    "jpg-to-webp",
+                    "webp-to-png",
+                    "heic-to-jpg",
+                    "mp4-to-mp3",
+                    "mp4-to-gif",
+                    "wav-to-mp3",
+                    "zip-extract",
+                    "file-compress");
 
     @PostConstruct
     @Transactional
@@ -61,18 +73,23 @@ public class AnalyticsService {
                 created++;
             }
         }
-        log.info("Tool stats initialized: {} tools total, {} newly created", ALL_TOOLS.size(), created);
+        log.info(
+                "Tool stats initialized: {} tools total, {} newly created",
+                ALL_TOOLS.size(),
+                created);
     }
 
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${analytics.session-cleanup-interval-ms}")
-    public void clearVisitorCache() { seenSessions.clear(); }
+    @Scheduled(fixedDelayString = "${analytics.session-cleanup-interval-ms}")
+    public void clearVisitorCache() {
+        seenSessions.clear();
+    }
 
     // ─── Track Visit ──────────────────────────────────────────────────────────
 
     /**
-     * Called from AnalyticsController on every page view.
-     * @Async = fire-and-forget, never blocks the HTTP response.
-     * Delegates DB writes to AnalyticsWriter so @Transactional proxy is not bypassed.
+     * Called from AnalyticsController on every page view. @Async = fire-and-forget, never blocks
+     * the HTTP response. Delegates DB writes to AnalyticsWriter so @Transactional proxy is not
+     * bypassed.
      */
     @Async
     public void trackVisit(String sessionId) {
@@ -97,8 +114,8 @@ public class AnalyticsService {
     // ─── Track Conversion ────────────────────────────────────────────────────
 
     /**
-     * Called ONLY from ConversionService.doConvert() after a successful conversion.
-     * ⚠️  NOT called from AnalyticsController — that would double-count.
+     * Called ONLY from ConversionService.doConvert() after a successful conversion. ⚠️ NOT called
+     * from AnalyticsController — that would double-count.
      */
     @Async
     public void trackConversion(String converterType) {
@@ -110,7 +127,11 @@ public class AnalyticsService {
             analyticsWriter.writeConversion(converterType);
             log.debug("Conversion tracked for type=[{}]", converterType);
         } catch (Exception e) {
-            log.error("Failed to track conversion for type=[{}]: {}", converterType, e.getMessage(), e);
+            log.error(
+                    "Failed to track conversion for type=[{}]: {}",
+                    converterType,
+                    e.getMessage(),
+                    e);
         }
     }
 
@@ -119,14 +140,14 @@ public class AnalyticsService {
     public AnalyticsStatsResponse getStats() {
         try {
             Analytics analytics = analyticsRepository.findById(1L).orElse(new Analytics());
-            long visits      = analytics.getTotalVisits();
+            long visits = analytics.getTotalVisits();
             long conversions = analytics.getTotalConversions();
-            long unique      = analytics.getUniqueVisitors();
-            double rate = visits > 0
-                    ? Math.round((conversions * 100.0 / visits) * 10.0) / 10.0
-                    : 0.0;
+            long unique = analytics.getUniqueVisitors();
+            double rate =
+                    visits > 0 ? Math.round((conversions * 100.0 / visits) * 10.0) / 10.0 : 0.0;
 
-            log.debug("Stats fetched: visits={}, conversions={}, unique={}, rate={}%",
+            log.debug(
+                    "Stats fetched: visits={}, conversions={}, unique={}, rate={}%",
                     visits, conversions, unique, rate);
             return AnalyticsStatsResponse.success(visits, conversions, unique, rate);
         } catch (Exception e) {
@@ -146,11 +167,11 @@ public class AnalyticsService {
     /**
      * Separate Spring component that owns the @Transactional DB writes.
      *
-     * WHY: When AnalyticsService calls its own @Transactional method (self-call),
-     * Spring's AOP proxy is bypassed — @Transactional is silently ignored and
-     * Hibernate throws "TransactionRequiredException: Executing an update/delete query".
+     * <p>WHY: When AnalyticsService calls its own @Transactional method (self-call), Spring's AOP
+     * proxy is bypassed — @Transactional is silently ignored and Hibernate throws
+     * "TransactionRequiredException: Executing an update/delete query".
      *
-     * By delegating to THIS separate bean, the call goes through Spring's proxy
+     * <p>By delegating to THIS separate bean, the call goes through Spring's proxy
      * and @Transactional works correctly every time.
      */
     @Component

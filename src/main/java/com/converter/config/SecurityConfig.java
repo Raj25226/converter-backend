@@ -9,8 +9,14 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,29 +39,27 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
     @Value("${cors.allowed-methods}")
     private String[] allowedMethods;
+
     @Value("${cors.allowed-headers}")
     private String[] allowedHeaders;
+
     @Value("${cors.exposed-headers}")
     private String[] exposedHeaders;
+
     @Value("${cors.allow-credentials}")
     private boolean allowCredentials;
 
-    @org.springframework.beans.factory.annotation.Value("${auth.password-strength}")
+    @Value("${auth.password-strength}")
     private int passwordStrength;
-    @org.springframework.beans.factory.annotation.Value("${cors.max-age-seconds}")
-    private long corsMaxAgeSeconds;
 
+    @Value("${cors.max-age-seconds}")
+    private long corsMaxAgeSeconds;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -80,59 +84,82 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http,
-                                           JwtAuthFilter jwtAuthFilter,
-                                           CorsConfigurationSource corsConfigurationSource) throws Exception {
-        http
-                .csrf(AbstractHttpConfigurer::disable)
+    public SecurityFilterChain filterChain(
+            HttpSecurity http,
+            JwtAuthFilter jwtAuthFilter,
+            CorsConfigurationSource corsConfigurationSource)
+            throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        // ── Public auth endpoints ─────────────────────────────
-                        .requestMatchers(
-                                "/api/auth/signup",
-                                "/api/auth/login",
-                                "/api/auth/google",
-                                "/api/auth/resend-verification",
-                                "/api/auth/verify-email",
-                                "/api/auth/forgot-password",
-                                "/api/auth/reset-password"
-                        ).permitAll()
-                        // ── Public conversion & download ─────────────────────
-                        .requestMatchers("/api/convert/**", "/api/jobs", "/api/jobs/**").permitAll()
-                        .requestMatchers("/api/download/**").permitAll()
-                        // ── Public analytics ─────────────────────────────────
-                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-                        .requestMatchers("/api/analytics/stats").hasRole("ADMIN")
-                        .requestMatchers("/api/analytics/**").permitAll()
-                        // ── Admin only ────────────────────────────────────────
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        // ── Authenticated user endpoints ─────────────────────
-                        .requestMatchers(
-                                "/api/auth/me",
-                                "/api/auth/profile",
-                                "/api/auth/change-password",
-                                "/api/user/**"
-                        ).authenticated()
-                        .anyRequest().authenticated()
-                )
+                .authorizeHttpRequests(
+                        auth ->
+                                auth
+                                        // ── Public auth endpoints ─────────────────────────────
+                                        .requestMatchers(
+                                                "/api/auth/signup",
+                                                "/api/auth/login",
+                                                "/api/auth/google",
+                                                "/api/auth/resend-verification",
+                                                "/api/auth/verify-email",
+                                                "/api/auth/forgot-password",
+                                                "/api/auth/reset-password")
+                                        .permitAll()
+                                        // ── Public conversion & download ─────────────────────
+                                        .requestMatchers(
+                                                "/api/convert/**", "/api/jobs", "/api/jobs/**")
+                                        .permitAll()
+                                        .requestMatchers("/api/download/**")
+                                        .permitAll()
+                                        // ── Public analytics ─────────────────────────────────
+                                        .requestMatchers("/actuator/health", "/actuator/health/**")
+                                        .permitAll()
+                                        .requestMatchers("/api/analytics/stats")
+                                        .hasRole("ADMIN")
+                                        .requestMatchers("/api/analytics/**")
+                                        .permitAll()
+                                        // ── Admin only ────────────────────────────────────────
+                                        .requestMatchers("/api/admin/**")
+                                        .hasRole("ADMIN")
+                                        // ── Authenticated user endpoints ─────────────────────
+                                        .requestMatchers(
+                                                "/api/auth/me",
+                                                "/api/auth/profile",
+                                                "/api/auth/change-password",
+                                                "/api/user/**")
+                                        .authenticated()
+                                        .anyRequest()
+                                        .authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((req, res, e) -> {
-                            log.warn("Unauthorized access to [{}]: {}", req.getRequestURI(), e.getMessage());
-                            sendError(res, 401, "Unauthorized: " + e.getMessage());
-                        })
-                        .accessDeniedHandler((req, res, e) -> {
-                            log.warn("Access denied to [{}]: {}", req.getRequestURI(), e.getMessage());
-                            sendError(res, 403, "Forbidden: insufficient permissions");
-                        })
-                );
+                .exceptionHandling(
+                        ex ->
+                                ex.authenticationEntryPoint(
+                                                (req, res, e) -> {
+                                                    log.warn(
+                                                            "Unauthorized access to [{}]: {}",
+                                                            req.getRequestURI(),
+                                                            e.getMessage());
+                                                    sendError(
+                                                            res,
+                                                            401,
+                                                            "Unauthorized: " + e.getMessage());
+                                                })
+                                        .accessDeniedHandler(
+                                                (req, res, e) -> {
+                                                    log.warn(
+                                                            "Access denied to [{}]: {}",
+                                                            req.getRequestURI(),
+                                                            e.getMessage());
+                                                    sendError(
+                                                            res,
+                                                            403,
+                                                            "Forbidden: insufficient permissions");
+                                                }));
 
         return http.build();
     }
 
-    private static final org.slf4j.Logger log =
-            org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private void sendError(HttpServletResponse res, int status, String message) throws IOException {
         res.setStatus(status);
@@ -152,9 +179,9 @@ public class SecurityConfig {
         private final UserRepository userRepository;
 
         @Override
-        protected void doFilterInternal(HttpServletRequest request,
-                                        HttpServletResponse response,
-                                        FilterChain chain) throws ServletException, IOException {
+        protected void doFilterInternal(
+                HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                throws ServletException, IOException {
 
             String path = request.getRequestURI();
             String header = request.getHeader("Authorization");
@@ -172,16 +199,17 @@ public class SecurityConfig {
                     String role;
 
                     Optional<User> userOpt = userRepository.findById(userId);
-                    if (userOpt.isPresent() && userOpt.get().isActive()
+                    if (userOpt.isPresent()
+                            && userOpt.get().isActive()
                             && jwtUtil.getTokenVersion(token) == userOpt.get().getTokenVersion()) {
                         role = userOpt.get().getRole().name();
-                        List<SimpleGrantedAuthority> authorities = List.of(
-                                new SimpleGrantedAuthority("ROLE_" + role)
-                        );
+                        List<SimpleGrantedAuthority> authorities =
+                                List.of(new SimpleGrantedAuthority("ROLE_" + role));
                         UsernamePasswordAuthenticationToken auth =
                                 new UsernamePasswordAuthenticationToken(userId, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(auth);
-                        log.debug("Authenticated user id=[{}] role=[{}] on [{}]", userId, role, path);
+                        log.debug(
+                                "Authenticated user id=[{}] role=[{}] on [{}]", userId, role, path);
                     } else if (userOpt.isEmpty()) {
                         log.warn("JWT references unknown userId=[{}], ignoring token", userId);
                     } else {

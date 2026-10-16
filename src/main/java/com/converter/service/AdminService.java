@@ -6,30 +6,30 @@ import com.converter.dto.UserUpdateRequest;
 import com.converter.entity.ToolStat;
 import com.converter.entity.User;
 import com.converter.exception.AppException;
+import com.converter.repository.EmailTokenRepository;
 import com.converter.repository.UserRepository;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AdminService {
-    @org.springframework.beans.factory.annotation.Value("${admin.max-page-size}")
+    @Value("${admin.max-page-size}")
     private int maxPageSize;
-
 
     private final UserRepository userRepository;
     private final AnalyticsService analyticsService;
     private final ConversionService conversionService;
-    private final com.converter.repository.EmailTokenRepository emailTokens;
+    private final EmailTokenRepository emailTokenRepository;
 
     public AdminStatsResponse getStats() {
         log.info("Admin: fetching dashboard stats");
@@ -39,21 +39,23 @@ public class AdminService {
         long totalUsers = userRepository.count();
 
         var data = analyticsStats.getData();
-        long visits      = data != null ? data.getTotalVisits()      : 0;
+        long visits = data != null ? data.getTotalVisits() : 0;
         long conversions = data != null ? data.getTotalConversions() : 0;
-        long unique      = data != null ? data.getUniqueVisitors()   : 0;
-        double rate = visits > 0
-                ? Math.round((conversions * 100.0 / visits) * 10.0) / 10.0
-                : 0.0;
+        long unique = data != null ? data.getUniqueVisitors() : 0;
+        double rate = visits > 0 ? Math.round((conversions * 100.0 / visits) * 10.0) / 10.0 : 0.0;
 
-        List<AdminStatsResponse.ToolStatDto> toolStatDtos = toolStats.stream()
-                .map(ts -> AdminStatsResponse.ToolStatDto.builder()
-                        .tool(ts.getTool())
-                        .count(ts.getCount())
-                        .build())
-                .collect(Collectors.toList());
+        List<AdminStatsResponse.ToolStatDto> toolStatDtos =
+                toolStats.stream()
+                        .map(
+                                ts ->
+                                        AdminStatsResponse.ToolStatDto.builder()
+                                                .tool(ts.getTool())
+                                                .count(ts.getCount())
+                                                .build())
+                        .collect(Collectors.toList());
 
-        log.info("Admin stats: users={}, visits={}, conversions={}, unique={}, rate={}%",
+        log.info(
+                "Admin stats: users={}, visits={}, conversions={}, unique={}, rate={}%",
                 totalUsers, visits, conversions, unique, rate);
 
         return AdminStatsResponse.builder()
@@ -75,13 +77,19 @@ public class AdminService {
         // ✅ Normalize null search to empty string for the JPQL query
         String normalizedSearch = (search == null) ? "" : search.trim();
 
-        log.info("Admin: list users — page={}, limit={}, search=[{}]", page, limit, normalizedSearch);
+        log.info(
+                "Admin: list users — page={}, limit={}, search=[{}]",
+                page,
+                limit,
+                normalizedSearch);
 
-        Page<User> userPage = userRepository.searchUsers(normalizedSearch, PageRequest.of(page, limit));
+        Page<User> userPage =
+                userRepository.searchUsers(normalizedSearch, PageRequest.of(page, limit));
 
-        List<UserPageResponse.UserItem> items = userPage.getContent().stream()
-                .map(UserPageResponse::fromUser)
-                .collect(Collectors.toList());
+        List<UserPageResponse.UserItem> items =
+                userPage.getContent().stream()
+                        .map(UserPageResponse::fromUser)
+                        .collect(Collectors.toList());
 
         log.info("Admin: returned {} users (total={})", items.size(), userPage.getTotalElements());
 
@@ -96,13 +104,20 @@ public class AdminService {
 
     @Transactional
     public void updateUser(Long userId, UserUpdateRequest req) {
-        log.info("Admin: update user=[{}] role=[{}] active=[{}]", userId, req.getRole(), req.getIsActive());
+        log.info(
+                "Admin: update user=[{}] role=[{}] active=[{}]",
+                userId,
+                req.getRole(),
+                req.getIsActive());
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.warn("Admin: user=[{}] not found for update", userId);
-                    return new AppException("User not found", HttpStatus.NOT_FOUND);
-                });
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> {
+                                    log.warn("Admin: user=[{}] not found for update", userId);
+                                    return new AppException("User not found", HttpStatus.NOT_FOUND);
+                                });
 
         if (req.getRole() != null && !req.getRole().isBlank()) {
             try {
@@ -110,7 +125,8 @@ public class AdminService {
                 log.info("Admin: user=[{}] role changed to [{}]", userId, req.getRole());
             } catch (IllegalArgumentException e) {
                 log.warn("Admin: invalid role [{}] for user=[{}]", req.getRole(), userId);
-                throw new AppException("Invalid role: '" + req.getRole() + "'. Must be USER or ADMIN.",
+                throw new AppException(
+                        "Invalid role: '" + req.getRole() + "'. Must be USER or ADMIN.",
                         HttpStatus.BAD_REQUEST);
             }
         }
@@ -128,18 +144,22 @@ public class AdminService {
     public void deleteUser(Long userId) {
         log.info("Admin: delete user=[{}]", userId);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.warn("Admin: user=[{}] not found for delete", userId);
-                    return new AppException("User not found", HttpStatus.NOT_FOUND);
-                });
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> {
+                                    log.warn("Admin: user=[{}] not found for delete", userId);
+                                    return new AppException("User not found", HttpStatus.NOT_FOUND);
+                                });
 
         while (true) {
             var page = conversionService.getUserHistory(userId, 0, 100).getConversions();
             if (page.isEmpty()) break;
-            for (var conversion : page) conversionService.deleteConversionRecord(conversion.getId(), userId);
+            for (var conversion : page)
+                conversionService.deleteConversionRecord(conversion.getId(), userId);
         }
-        emailTokens.deleteByUserId(userId);
+        emailTokenRepository.deleteByUserId(userId);
         userRepository.delete(user);
         log.info("Admin: user=[{}] email=[{}] deleted", userId, user.getEmail());
     }

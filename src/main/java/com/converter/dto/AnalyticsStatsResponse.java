@@ -6,8 +6,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -28,8 +26,8 @@ public class AnalyticsStatsResponse {
         private double conversionRate;
     }
 
-    public static AnalyticsStatsResponse success(long visits, long conversions,
-                                                 long unique, double rate) {
+    public static AnalyticsStatsResponse success(
+            long visits, long conversions, long unique, double rate) {
         return AnalyticsStatsResponse.builder()
                 .status("success")
                 .data(new StatsData(visits, conversions, unique, rate))
@@ -37,9 +35,6 @@ public class AnalyticsStatsResponse {
     }
 
     public static AnalyticsStatsResponse error(String message) {
-        return AnalyticsStatsResponse.builder()
-                .status("error")
-                .message(message)
-                .build();
+        return AnalyticsStatsResponse.builder().status("error").message(message).build();
     }
 }
