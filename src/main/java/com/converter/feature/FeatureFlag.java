@@ -32,7 +32,8 @@ public enum FeatureFlag {
     CONVERSION_MP4_TO_GIF("conversion-mp4-to-gif"),
     CONVERSION_WAV_TO_MP3("conversion-wav-to-mp3"),
     CONVERSION_ZIP_EXTRACT("conversion-zip-extract"),
-    CONVERSION_FILE_COMPRESS("conversion-file-compress");
+    CONVERSION_FILE_COMPRESS("conversion-file-compress"),
+    CONVERSION_IMAGE_COMPRESSOR("conversion-image-compressor");
     private final String key;
 
     FeatureFlag(String key) {

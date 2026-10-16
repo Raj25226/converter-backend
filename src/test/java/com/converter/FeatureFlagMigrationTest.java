@@ -85,7 +85,7 @@ class FeatureFlagMigrationTest {
                         "SELECT enabled FROM feature_flags WHERE flag_key = 'signup'",
                         Boolean.class));
         assertEquals(
-                28,
+                FeatureFlag.values().length,
                 jdbcTemplate.queryForObject("SELECT COUNT(*) FROM feature_flags", Integer.class));
     }
 }

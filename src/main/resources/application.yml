@@ -250,3 +250,4 @@ features:
     conversion-wav-to-mp3: ${FEATURE_CONVERSION_WAV_TO_MP3:true}
     conversion-zip-extract: ${FEATURE_CONVERSION_ZIP_EXTRACT:true}
     conversion-file-compress: ${FEATURE_CONVERSION_FILE_COMPRESS:true}
+    conversion-image-compressor: ${FEATURE_CONVERSION_IMAGE_COMPRESSOR:true}

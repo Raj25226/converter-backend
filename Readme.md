@@ -235,3 +235,20 @@ by restarting with `FEATURE_FLAGS_SOURCE=environment` and `FEATURE_LOGIN=true`,
 sign in, then restore database mode and reset the login override. Feature flags
 control availability and never replace authentication, ownership, quotas, or roles.
 Deploy the backend (including V6 and V7) before the frontend.
+
+## Browser-local image compressor
+
+The frontend includes `/image-compressor`, adapted from the sibling
+`image-compressor` project's on-device engine. JPEG, PNG, and WebP files stay in
+the browser and do not consume backend conversion quota, create history records,
+or use temporary server downloads. Target sizes are best-effort, with previews,
+format selection, optional resizing, progress, and cancellation. The tool has a
+20 MB / 40 megapixel input limit and 1–20,480 KB targets. Metadata may be removed;
+animated inputs produce a still image. Keep the original and check the result.
+
+V8 seeds `conversion-image-compressor=true`, editable through the existing admin
+flag panel. Its environment default is `FEATURE_CONVERSION_IMAGE_COMPRESSOR`.
+The global conversions flag also controls its UI availability. Because all image
+processing is local, this flag controls the app UI; it cannot prevent users from
+running image-processing code themselves outside the app. Server API flags remain
+backend-enforced. Deploy backend migration V8 before the frontend update.
