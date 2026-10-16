@@ -84,6 +84,8 @@ cors:
 
 # ── File Storage ───────────────────────────────────────────────────────────────
 file:
+  cleanup-batch-size: ${FILE_CLEANUP_BATCH_SIZE:100}
+  cleanup-max-batches: ${FILE_CLEANUP_MAX_BATCHES:10}
   history-retention-days: ${FILE_HISTORY_RETENTION_DAYS:30}
   orphan-grace-minutes: ${FILE_ORPHAN_GRACE_MINUTES:10}
   orphan-cleanup-interval-ms: ${FILE_ORPHAN_CLEANUP_INTERVAL_MS:3600000}
@@ -101,6 +103,7 @@ app:
 
 # ── Conversion Limits ──────────────────────────────────────────────────────────
 conversion:
+  pdf-verification: ${CONVERSION_PDF_VERIFICATION:structural}
   max-pdf-table-columns: ${CONVERSION_MAX_PDF_TABLE_COLUMNS:100}
   max-pdf-table-rows: ${CONVERSION_MAX_PDF_TABLE_ROWS:100000}
   table-max-column-width: ${CONVERSION_TABLE_MAX_COLUMN_WIDTH:60}
@@ -204,3 +207,13 @@ admin:
   max-page-size: ${ADMIN_MAX_PAGE_SIZE:100}
   default-page-size: ${ADMIN_DEFAULT_PAGE_SIZE:20}
   default-offset: ${ADMIN_DEFAULT_OFFSET:0}
+
+# Durable background conversion queue. Existing synchronous routes remain available.
+jobs:
+  enabled: ${CONVERSION_JOBS_ENABLED:true}
+  max-pending: ${CONVERSION_JOBS_MAX_PENDING:20}
+  retention-minutes: ${CONVERSION_JOBS_RETENTION_MINUTES:60}
+  queue-timeout-seconds: ${CONVERSION_JOBS_QUEUE_TIMEOUT_SECONDS:900}
+  upload-timeout-seconds: ${CONVERSION_JOBS_UPLOAD_TIMEOUT_SECONDS:300}
+  poll-interval-ms: ${CONVERSION_JOBS_POLL_INTERVAL_MS:1000}
+  maintenance-interval-ms: ${CONVERSION_JOBS_MAINTENANCE_INTERVAL_MS:10000}

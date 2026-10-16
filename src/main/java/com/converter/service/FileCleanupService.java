@@ -20,6 +20,10 @@ import java.util.List;
 public class FileCleanupService {
     @org.springframework.beans.factory.annotation.Value("${file.history-retention-days}")
     private long historyRetentionDays;
+    @org.springframework.beans.factory.annotation.Value("${file.cleanup-batch-size:100}")
+    private int batchSize = 100;
+    @org.springframework.beans.factory.annotation.Value("${file.cleanup-max-batches:10}")
+    private int maxBatches = 10;
     @org.springframework.beans.factory.annotation.Value("${file.orphan-grace-minutes}")
     private long orphanGraceMinutes;
 
@@ -46,38 +50,38 @@ public class FileCleanupService {
      * Deletes expired files, retaining history for 30 days.
      */
     @Scheduled(fixedDelayString = "${file.cleanup-interval-ms}")
-    @Transactional
     public void cleanupExpiredFiles() {
         Instant now = Instant.now();
-        List<Conversion> expired = conversionRepository.findByExpiresAtBeforeAndFileIdIsNotNull(now);
-
-
-        log.info("File cleanup: found {} expired conversion records", expired.size());
-
-        int filesDeleted = 0;
-
-
-        for (Conversion conv : expired) {
-            if (conv.getFileId() == null) continue;
-
-            boolean removed = true;
-            for (String ext : KNOWN_EXTENSIONS) {
-                Path candidate = outputPath.resolve(conv.getFileId() + "." + ext);
-                try {
-                    if (Files.deleteIfExists(candidate)) {
-                        filesDeleted++;
-                        log.debug("Deleted expired file: {}", candidate.getFileName());
+        if (batchSize < 1 || maxBatches < 1) throw new IllegalStateException("Cleanup batch settings must be positive.");
+        var pageable = org.springframework.data.domain.PageRequest.of(0, batchSize);
+        long after = 0; int filesDeleted = 0, deletedRecords = 0;
+        for (int batch = 0; batch < maxBatches; batch++) {
+            var expired = conversionRepository.findExpiredBatch(now, after, pageable);
+            if (expired.isEmpty()) break;
+            var completed = new java.util.ArrayList<Long>();
+            for (Conversion conversion : expired) {
+                after = conversion.getId(); boolean removed = true;
+                for (String extension : KNOWN_EXTENSIONS) {
+                    try {
+                        if (Files.deleteIfExists(outputPath.resolve(conversion.getFileId() + "." + extension))) filesDeleted++;
+                    } catch (IOException failure) {
+                        removed = false; log.warn("Could not delete expired file for conversion {}", conversion.getId(), failure);
                     }
-                } catch (IOException e) {
-                    removed = false;
-                    log.warn("Could not delete expired file [{}]: {}", candidate.getFileName(), e.getMessage());
                 }
+                if (removed) completed.add(conversion.getId());
             }
-            if (removed) conv.setFileId(null);
+            // Each repository update commits separately; filesystem IO holds no database transaction.
+            if (!completed.isEmpty()) conversionRepository.clearExpiredFiles(completed, now);
+            if (expired.size() < batchSize) break;
         }
-
-        int deletedRecords = conversionRepository.deleteExpiredConversions(now.minus(historyRetentionDays, java.time.temporal.ChronoUnit.DAYS));
-        log.info("File cleanup complete: deleted {} physical files, {} DB records", filesDeleted, deletedRecords);
+        Instant retention = now.minus(historyRetentionDays, java.time.temporal.ChronoUnit.DAYS);
+        for (int batch = 0; batch < maxBatches; batch++) {
+            var ids = conversionRepository.findRetiredBatch(retention, pageable);
+            if (ids.isEmpty()) break;
+            deletedRecords += conversionRepository.deleteRetiredBatch(ids, retention);
+            if (ids.size() < batchSize) break;
+        }
+        log.info("File cleanup complete: deleted {} files and {} history records", filesDeleted, deletedRecords);
     }
 
     // Reclaim orphaned outputs and work directories after expiry plus a processing grace period.
@@ -85,7 +89,7 @@ public class FileCleanupService {
     public void cleanupOrphans() {
         Instant cutoff = Instant.now().minus(expiryMinutes + orphanGraceMinutes, java.time.temporal.ChronoUnit.MINUTES);
         try (var entries = Files.list(outputPath)) {
-            for (Path entry : entries.toList()) {
+            for (Path entry : (Iterable<Path>) entries::iterator) {
                 String name = entry.getFileName().toString();
                 if (!(name.matches("[a-f0-9]{32}\\.[a-zA-Z0-9]+") || (name.startsWith("office-") || name.startsWith("work-")))) continue;
                 if (!Files.getLastModifiedTime(entry, java.nio.file.LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)) continue;

@@ -8,6 +8,8 @@ import java.time.Instant;
 
 @Data
 @Builder
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ConversionResponse {
 

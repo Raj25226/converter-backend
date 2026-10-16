@@ -34,7 +34,7 @@ Configure Google OAuth with the same client ID on both sides and your frontend o
 
 | Tool | Implementation and limits |
 | --- | --- |
-| PDF → Word | LibreOffice PDF layout import preserves editable positioned text, font sizes/styles/colors, images, graphics, and page dimensions. Page anchors are normalized; a PDF round trip checks per-page text, page count, and dimensions before publishing. Text extraction differences return a warning with the DOCX rather than rejecting it. Text boxes are used rather than recovering the original Word paragraph/table structure. Scans remain images and return an OCR warning. |
+| PDF → Word | LibreOffice PDF layout import preserves editable positioned text, font sizes/styles/colors, images, graphics, and page dimensions. Page anchors are normalized and DOCX package validation is mandatory. Optional deep verification round-trips the DOCX to PDF, checking per-page text and geometry; text differences return warnings rather than rejecting the file. Text boxes are used rather than recovering the original Word paragraph/table structure. Scans remain images and return an OCR warning. |
 | Word → PDF | DOC/DOCX use LibreOffice Writer to render formatting, tables, images, headers/footers, links, and pagination. Fonts must be installed on the server; unsupported Office features can differ from Microsoft Word. |
 | PDF → Excel | Glyph coordinates infer columns, with rich text fonts, sizes, bold/italic, and colors. Every displayed value remains text, preserving leading zeros, long IDs, currency, and formula-looking strings. Original formulas, merged cells, borders, graphics, and spreadsheet structure cannot be recovered; no OCR. |
 | Excel → PDF | XLS/XLSX use LibreOffice Calc with the original workbook, print areas, page settings, visible sheets, displayed values, charts, and images. The backend does not rewrite or force-fit the workbook. |
@@ -52,17 +52,36 @@ Configure Google OAuth with the same client ID on both sides and your frontend o
 
 Successful API responses include a `warnings` array when the conversion changes or cannot recover features. Clients should display these messages with the result. Existing success fields and download routes are unchanged. Warnings describe actual output policies; they are not a claim of pixel-perfect conversion.
 
-PDF-to-Word uses the maintained LibreOffice [PDF import and DOCX export filters](https://help.libreoffice.org/latest/en-US/text/shared/guide/convertfilters.html). PDF stores painted page content rather than original Office structure, so native tables, semantic headers/footers, reading order in complicated layouts, annotations, forms, and font availability still require representative document testing. The verification check reports selectable-character differences as warnings and rejects changed page geometry; it cannot detect every possible visual difference. Install any required licensed source fonts on the server and in the Word viewer.
+PDF-to-Word uses the maintained LibreOffice [PDF import and DOCX export filters](https://help.libreoffice.org/latest/en-US/text/shared/guide/convertfilters.html). PDF stores painted page content rather than original Office structure, so native tables, semantic headers/footers, reading order in complicated layouts, annotations, forms, and font availability still require representative document testing. When enabled, deep verification reports selectable-character differences as warnings and rejects changed page geometry; it cannot detect every possible visual difference. Install any required licensed source fonts on the server and in the Word viewer.
 
 All image conversions use sRGB color management. `IMAGE_SRGB_PROFILE` can select an ICC profile; otherwise the standard Ubuntu or macOS sRGB profile is discovered automatically. Without an installed profile, an explicit color-management warning is returned. Docker and CI install `icc-profiles-free`. This uses ImageMagick's [ICC profile conversion](https://imagemagick.org/command-line-options/#profile) before stripping metadata.
 
-Defaults: 50MB uploads, two guest attempts/day, ten signed-in attempts/day, and 30-minute downloads. Quotas reset at midnight UTC. Attempts consume quota even when processing fails or the browser cancels. Cancelling the upload does not stop work already received by the server.
+Defaults: 50MB uploads, two guest attempts/day, ten signed-in attempts/day, and 30-minute downloads. Quotas reset at midnight UTC. Attempts consume quota even when processing fails or the browser cancels. Cancelling an upload can leave a job already accepted by the server; recover it on the same tool page. Accepted background jobs have an explicit cancellation endpoint. Attempts, including cancelled accepted jobs, still consume quota.
 
-Daily usage is stored separately from conversion history and reserved atomically in PostgreSQL. Deleting history or expiring files does not reset usage. Guest identity is the normalized client IP; shared networks share guest quota. Auth and visit tracking also have per-minute request limits. Two conversions can run simultaneously per backend instance; additional requests receive 503. External conversion processes time out after two minutes.
+Daily usage is stored separately from conversion history and reserved atomically in PostgreSQL. Deleting history or expiring files does not reset usage. Guest identity is the normalized client IP; shared networks share guest quota. Auth and visit tracking also have per-minute request limits. Two conversions can run simultaneously per backend instance. Background submissions wait in a bounded queue (20 accepted/pending jobs by default); a full queue returns 503. Legacy synchronous submissions receive 503 when workers are busy. External conversion processes time out after two minutes.
 
 Download URLs are unguessable bearer links: anyone with the link can download before expiry. Do not share sensitive links. Downloads use `no-store`. Expired output files are removed by a scheduled job, normally within one minute of expiry while the service is running. Conversion metadata (including filenames and client IP) is retained for approximately 30 days after expiry. Orphaned work files are swept hourly after expiry plus a ten-minute grace period.
 
 PDFs have a 500-page limit and a 500,000-character extraction budget. PDF-to-Excel also enforces the spreadsheet cell limit and a configurable 1,024-style budget. Images decoded with ImageIO are limited to 25 megapixels and 10,000 pixels per side. ZIPs permit at most 1,000 entries, 100MB per entry, and 500MB total uncompressed data. Unsafe archive paths are skipped and reported. Password-protected inputs, macro-enabled OOXML documents, and externally linked Office resources are rejected.
+
+## Background conversion and history APIs
+
+Deploy the backend and its migrations before the new frontend. The frontend submits multipart uploads to `POST /api/jobs/{tool}` with `file` and a random UUID `requestId`. All 15 existing tool IDs are supported. The server returns HTTP 202 with `jobId`, `requestId`, and `status`; conversion runs outside the upload request. Existing `/api/convert/{tool}` synchronous routes remain available for older clients.
+
+- `GET /api/jobs/{jobId}` returns `uploading`, `queued`, `running`, `succeeded`, `failed`, `cancelled`, or `expired`. Successful jobs include the original conversion response under `result`, including download URL and warnings.
+- `DELETE /api/jobs/{jobId}` cancels a queued/running job. Running workers are interrupted, native subprocesses are stopped, and late results are discarded. Other worker instances observe cancellation during heartbeat maintenance.
+- `GET /api/jobs/request/{requestId}` recovers a submission after its HTTP acknowledgement was lost. Retrying the same request ID for the same owner returns the existing job and does not reserve another quota attempt.
+- `GET /api/jobs?tool=pdf-to-word` returns up to 20 active/recent jobs for a signed-in user. Signed-in job reads and cancellation require the owning account. Guest IDs are bearer capabilities, like guest download links.
+
+The browser retains the current job/request ID per account and tool. Once the upload is accepted, leaving or refreshing the page does not cancel the conversion. Return to the tool to resume polling or retrieve the result. Polling pauses in hidden tabs and backs off on connection errors. Queue/running states are reported without fabricated processing percentages.
+
+Staged uploads are stored under the upload directory and survive process restarts. Queued jobs can be claimed by a new worker. Running jobs whose heartbeat expires are marked interrupted rather than silently repeated. Job metadata is retained for 60 minutes by default, and successful jobs are retained at least until their download expires. Source uploads are removed after completion, failure, or cancellation. Multiple backend instances require shared **upload and output** storage as well as PostgreSQL.
+
+`CONVERSION_JOBS_MAX_PENDING` bounds admission; `CONVERSION_MAX_CONCURRENT` bounds running conversions across background and synchronous paths. `CONVERSION_JOBS_QUEUE_TIMEOUT_SECONDS` bounds waiting time. Quota is reserved atomically with job admission before staging; failed/cancelled accepted attempts still count. Keep `CONVERSION_JOBS_ENABLED=true` for the new frontend.
+
+`GET /api/user/history?page=0&size=20` returns one history slice with `page`, `size`, `hasNext`, and `hasPrevious`. Page size is limited to 100. Results are sorted by creation time and ID to handle timestamp ties without duplicates between unchanged pages. No full-history count query is needed. The dashboard loads only the current page and refreshes only while visible.
+
+PDF verification defaults to `CONVERSION_PDF_VERIFICATION=structural`, avoiding the second LibreOffice render while retaining input limits, package validation, and page-anchor normalization. Set it to `deep` for round-trip text/page verification. Expired-file cleanup uses `FILE_CLEANUP_BATCH_SIZE` and `FILE_CLEANUP_MAX_BATCHES`; filesystem deletion runs outside database transactions and unsuccessful deletions are retried.
 
 ## Database migrations
 
@@ -71,6 +90,8 @@ Flyway manages the schema; Hibernate validates it instead of changing it during 
 - V1: original application tables.
 - V2: independent quota ledger.
 - V3: JWT revocation version. Changing or resetting a password invalidates existing tokens.
+- V4: composite index for stable, paginated user history.
+- V5: durable background jobs and admission locking.
 
 For a **new database**, migrations run automatically. For an **existing database created by the old Hibernate `update` setting**, back it up and compare its schema against V1 first. If compatible, perform a one-time deployment with `SPRING_FLYWAY_BASELINE_ON_MIGRATE=true` and `SPRING_FLYWAY_BASELINE_VERSION=1`, then remove those settings. This baselines the existing tables and applies V2 and V3. Do not silently baseline an unreviewed schema.
 
@@ -103,7 +124,7 @@ To run the actual PostgreSQL quota concurrency/reset tests, point `QUOTA_TEST_DA
 
 ## Deployment considerations
 
-The Docker backend installs FFmpeg, ImageMagick with HEIC support, LibreOffice Writer/Calc/Impress/Draw (including PDF import), Noto/Liberation fonts, and an sRGB ICC profile, and runs as a non-root user. Compose defaults to a 2GiB backend memory limit, 256 processes, and two CPUs; adjust `BACKEND_MEMORY_LIMIT`, `BACKEND_CPU_LIMIT`, and conversion concurrency together for your workload. Docker images and media executables need to be smoke-tested with representative files before a release. OAuth/SMTP need a test using real configured providers.
+The Docker backend installs FFmpeg, ImageMagick with HEIC support, LibreOffice Writer/Calc/Impress/Draw (including PDF import), Noto/Liberation fonts, and an sRGB ICC profile, and runs as a non-root user. Compose defaults to a 2GiB backend memory limit, 256 processes, and two CPUs; adjust `BACKEND_MEMORY_LIMIT`, the Compose CPU setting, and conversion concurrency together for your workload. Docker images and media executables need to be smoke-tested with representative files before a release. OAuth/SMTP need a test using real configured providers.
 
 The Compose network uses `172.30.0.0/24`, with the gateway at `.2`. The backend trusts forwarded addresses only from that gateway, which overwrites incoming forwarding headers. If changing the network or adding a load balancer, update the trusted-proxy setting and edge rules together. Do not expose arbitrary trusted forwarding headers to clients. Standalone requests use the socket client address by default.
 

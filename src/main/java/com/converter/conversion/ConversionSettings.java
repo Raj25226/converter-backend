@@ -11,6 +11,8 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "conversion")
 public class ConversionSettings {
+    public enum PdfVerification { STRUCTURAL, DEEP }
+    @NotNull private PdfVerification pdfVerification = PdfVerification.STRUCTURAL;
     @Min(1) @Max(16) private int maxConcurrent;
     @Min(1) @Max(600) private int timeoutSeconds;
     @Min(1) @Max(1024) private int maxOutputSizeMb;

@@ -124,13 +124,31 @@ class ConversionSafetyTest {
             Files.write(output, output.toString().endsWith(".docx") ? docx : verification);
             return "";
         });
-        var converter = new FileConversionService(directory, TestSettings.settings(), runner);
+        var settings = TestSettings.settings(); settings.setPdfVerification(ConversionSettings.PdfVerification.DEEP);
+        var converter = new FileConversionService(directory, settings, runner);
         var result = converter.pdfToWord(upload("original.pdf", original));
         assertTrue(Files.isRegularFile(result.path()));
         assertTrue(result.warnings().stream().anyMatch(w -> w.contains("Text verification found differences")));
         try (var word = new org.apache.poi.xwpf.usermodel.XWPFDocument(Files.newInputStream(result.path()))) {
             assertEquals("Original selectable text", word.getParagraphs().getFirst().getText());
         }
+    }
+    @Test void structuralVerificationPublishesValidDocxWithoutSecondNativeRender() throws Exception {
+        byte[] docx;
+        try (var word = new org.apache.poi.xwpf.usermodel.XWPFDocument(); var bytes = new ByteArrayOutputStream()) {
+            word.createParagraph().createRun().setText("Editable output"); word.write(bytes); docx = bytes.toByteArray();
+        }
+        var runner = org.mockito.Mockito.mock(NativeProcessRunner.class);
+        org.mockito.Mockito.when(runner.run(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any(ConversionWorkspace.class),
+                org.mockito.ArgumentMatchers.any(Path.class), org.mockito.ArgumentMatchers.anyLong())).thenAnswer(call -> {
+            Path output = call.getArgument(2); assertTrue(output.toString().endsWith(".docx")); Files.write(output, docx); return "";
+        });
+        var settings = TestSettings.settings(); settings.setPdfVerification(ConversionSettings.PdfVerification.STRUCTURAL);
+        var converter = new FileConversionService(directory, settings, runner);
+        var result = converter.pdfToWord(upload("structural.pdf", pdfWithText("Original text")));
+        assertTrue(Files.size(result.path()) > 0);
+        org.mockito.Mockito.verify(runner, org.mockito.Mockito.times(1)).run(org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.any(ConversionWorkspace.class), org.mockito.ArgumentMatchers.any(Path.class), org.mockito.ArgumentMatchers.anyLong());
     }
     private byte[] pdfWithText(String text) throws Exception {
         try (var pdf = new PDDocument(); var bytes = new ByteArrayOutputStream()) {

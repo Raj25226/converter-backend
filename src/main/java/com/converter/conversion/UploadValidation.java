@@ -27,7 +27,12 @@ public final class UploadValidation {
         String name = FilenameUtils.getName(Objects.requireNonNullElse(file.getOriginalFilename(), "file"));
         name = Normalizer.normalize(name, Normalizer.Form.NFC).replaceAll("[\\p{Cntrl}]", "").trim();
         if (name.isBlank()) name = "file";
-        return name.length() > 220 ? name.substring(0, 220) : name;
+        if (name.length() <= 220) return name;
+        int dot = name.lastIndexOf('.');
+        String suffix = dot > 0 ? name.substring(dot) : "";
+        // A staged job must retain its input extension even when its display name is shortened.
+        if (suffix.length() > 1 && suffix.length() <= 32) return name.substring(0, 220 - suffix.length()) + suffix;
+        return name.substring(0, 220);
     }
     public static String outputName(MultipartFile file, String extension) {
         String base = FilenameUtils.getBaseName(displayName(file));

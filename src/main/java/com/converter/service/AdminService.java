@@ -134,8 +134,10 @@ public class AdminService {
                     return new AppException("User not found", HttpStatus.NOT_FOUND);
                 });
 
-        for (var conversion : conversionService.getUserHistory(userId).getConversions()) {
-            conversionService.deleteConversionRecord(conversion.getId(), userId);
+        while (true) {
+            var page = conversionService.getUserHistory(userId, 0, 100).getConversions();
+            if (page.isEmpty()) break;
+            for (var conversion : page) conversionService.deleteConversionRecord(conversion.getId(), userId);
         }
         emailTokens.deleteByUserId(userId);
         userRepository.delete(user);

@@ -35,8 +35,11 @@ class ConfigurationTest {
 
     @Test void devProfileProvidesLocalSettingsAndValidSigningKey() throws Exception {
         var environment = new StandardEnvironment();
-        for (var source : new YamlPropertySourceLoader().load("dev", new ClassPathResource("application-dev.yml"))) {
-            environment.getPropertySources().addLast(source);
+        // Spring resolves the dev variable catalog through placeholders in the base configuration.
+        for (String resource : new String[]{"application-dev.yml", "application.yml"}) {
+            for (var source : new YamlPropertySourceLoader().load(resource, new ClassPathResource(resource))) {
+                environment.getPropertySources().addLast(source);
+            }
         }
         assertTrue(environment.getRequiredProperty("jwt.secret").length() >= 64);
         assertNotNull(environment.getProperty("spring.mail.host"));

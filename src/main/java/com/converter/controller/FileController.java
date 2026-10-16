@@ -97,10 +97,10 @@ public class FileController {
 
     // GET /api/user/history — requires authentication
     @GetMapping("/api/user/history")
-    public ResponseEntity<ConversionHistoryResponse> getHistory(Authentication auth) {
+    public ResponseEntity<ConversionHistoryResponse> getHistory(Authentication auth, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         Long userId = (Long) auth.getPrincipal();
         log.debug("Conversion history requested for userId=[{}]", userId);
-        return ResponseEntity.ok(conversionService.getUserHistory(userId));
+        return ResponseEntity.ok(conversionService.getUserHistory(userId, page, size));
     }
 
     // DELETE /api/user/history/:id — requires authentication

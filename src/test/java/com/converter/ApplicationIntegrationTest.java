@@ -17,12 +17,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.datasource.username=sa", "spring.datasource.password=",
     "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
     "jwt.secret=integration-test-only-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "conversion.native-health-enabled=false", "spring.mail.username=", "spring.mail.password=",
+    "jobs.poll-interval-ms=3600000", "conversion.native-health-enabled=false", "spring.mail.username=", "spring.mail.password=",
     "file.output-dir=/tmp/converter-integration/outputs", "file.upload-dir=/tmp/converter-integration/uploads"
 })
 @AutoConfigureMockMvc
 class ApplicationIntegrationTest {
     @Autowired MockMvc mvc;
+    @Autowired com.converter.service.ConversionJobService jobs;
+    @Autowired com.converter.conversion.JobSettings jobSettings;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired com.converter.service.ConversionService conversionService;
+    @Autowired com.converter.conversion.ConversionSettings settings;
+    @Autowired @org.springframework.beans.factory.annotation.Qualifier("uploadPath") java.nio.file.Path uploadPath;
     @Autowired com.converter.repository.UserRepository users;
     @Autowired com.converter.util.JwtUtil jwt;
     @Autowired com.converter.repository.EmailTokenRepository emailTokens;
@@ -174,6 +181,123 @@ class ApplicationIntegrationTest {
         org.junit.jupiter.api.Assertions.assertFalse(users.existsById(victim.getId()));
         org.junit.jupiter.api.Assertions.assertFalse(emailTokens.existsById(email.getId()));
         org.junit.jupiter.api.Assertions.assertFalse(conversions.existsById(record.getId()));
+    }
+    private com.fasterxml.jackson.databind.JsonNode submitJob(String tool, String requestId, String token, String filename, byte[] bytes) throws Exception {
+        var request = multipart("/api/jobs/" + tool).file(new MockMultipartFile("file", filename, "application/octet-stream", bytes)).param("requestId", requestId);
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        return json.readTree(mvc.perform(request).andExpect(status().isAccepted()).andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse().getContentAsString());
+    }
+    private com.fasterxml.jackson.databind.JsonNode awaitJob(String id, String expected) {
+        var value = new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.JsonNode>();
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(15)).untilAsserted(() -> {
+            var body = mvc.perform(get("/api/jobs/" + id)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            var data = json.readTree(body); org.junit.jupiter.api.Assertions.assertEquals(expected, data.path("status").asText()); value.set(data);
+        });
+        return value.get();
+    }
+    @Test void jobSubmissionIsIdempotentAndResultSurvivesSeparateHttpRequests() throws Exception {
+        org.mockito.Mockito.clearInvocations(quotas);
+        String request = java.util.UUID.randomUUID().toString();
+        var job = submitJob("file-compress", request, null, "note.txt", "recoverable contents".getBytes());
+        var duplicate = submitJob("file-compress", request, null, "note.txt", "recoverable contents".getBytes());
+        org.junit.jupiter.api.Assertions.assertEquals(job.path("jobId"), duplicate.path("jobId"));
+        org.mockito.Mockito.verify(quotas, org.mockito.Mockito.times(1)).reserve(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(2));
+        mvc.perform(get("/api/jobs/request/" + request)).andExpect(status().isOk()).andExpect(jsonPath("$.jobId").value(job.path("jobId").asText()));
+        jobs.dispatch(); var result = awaitJob(job.path("jobId").asText(), "succeeded");
+        var download = mvc.perform(get(java.net.URI.create(result.path("result").path("downloadUrl").asText()).getPath())).andExpect(status().isOk()).andReturn();
+        try (var gzip = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(download.getResponse().getContentAsByteArray()))) {
+            org.junit.jupiter.api.Assertions.assertEquals("recoverable contents", new String(gzip.readAllBytes()));
+        }
+    }
+    @Test void queuedJobsCanBeCancelledAndNeverProduceOutputs() throws Exception {
+        var job = submitJob("file-compress", java.util.UUID.randomUUID().toString(), null, "cancel.txt", "cancel me".getBytes());
+        String id = job.path("jobId").asText();
+        mvc.perform(delete("/api/jobs/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("cancelled"));
+        jobs.dispatch(); jobs.maintain();
+        mvc.perform(get("/api/jobs/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("cancelled")).andExpect(jsonPath("$.result").doesNotExist());
+        org.junit.jupiter.api.Assertions.assertFalse(java.nio.file.Files.exists(uploadPath.resolve("jobs/" + id + ".upload")));
+    }
+    @Test void ownedJobsAreNotVisibleToOtherUsersOrAnonymousClients() throws Exception {
+        var owner = users.saveAndFlush(new com.converter.entity.User("job-owner@example.test", null, "Job", "Owner"));
+        var other = users.saveAndFlush(new com.converter.entity.User("job-other@example.test", null, "Job", "Other"));
+        String token = jwt.generateToken(owner);
+        var job = submitJob("file-compress", java.util.UUID.randomUUID().toString(), token, "owned.txt", "private".getBytes());
+        String path = "/api/jobs/" + job.path("jobId").asText();
+        mvc.perform(get(path)).andExpect(status().isNotFound());
+        mvc.perform(get(path).header("Authorization", "Bearer " + jwt.generateToken(other))).andExpect(status().isNotFound());
+        mvc.perform(delete(path).header("Authorization", "Bearer " + jwt.generateToken(other))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/jobs").param("tool", "file-compress").header("Authorization", "Bearer " + token)).andExpect(status().isOk()).andExpect(jsonPath("$[0].jobId").value(job.path("jobId").asText()));
+        mvc.perform(delete(path).header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+    }
+    @Test void fullQueueRejectsNewRequestsButAllowsIdempotentLookup() throws Exception {
+        int previous = jobSettings.getMaxPending(); jobSettings.setMaxPending(1); String id = null;
+        try {
+            String request = java.util.UUID.randomUUID().toString();
+            var job = submitJob("file-compress", request, null, "queued.txt", "queued".getBytes()); id = job.path("jobId").asText();
+            submitJob("file-compress", request, null, "queued.txt", "queued".getBytes());
+            mvc.perform(multipart("/api/jobs/file-compress").file(new MockMultipartFile("file", "full.txt", "text/plain", "full".getBytes())).param("requestId", java.util.UUID.randomUUID().toString())).andExpect(status().isServiceUnavailable());
+        } finally { if (id != null) mvc.perform(delete("/api/jobs/" + id)); jobSettings.setMaxPending(previous); }
+    }
+    @Test void jobFailuresArePersistedAsStatusInsteadOfAnUploadHttpError() throws Exception {
+        var job = submitJob("pdf-to-word", java.util.UUID.randomUUID().toString(), null, "invalid.pdf", "not a pdf".getBytes());
+        jobs.dispatch(); var failed = awaitJob(job.path("jobId").asText(), "failed");
+        org.junit.jupiter.api.Assertions.assertTrue(failed.path("error").asText().contains("valid PDF"));
+    }
+    @Test void queuedJobsCanBeClaimedByAnotherWorkerInstance() throws Exception {
+        var job = submitJob("file-compress", java.util.UUID.randomUUID().toString(), null, "restart.txt", "stored upload".getBytes());
+        var alternate = new com.converter.service.ConversionJobService(jdbc, transactions, conversionService, settings, jobSettings, json, uploadPath);
+        try { alternate.dispatch(); awaitJob(job.path("jobId").asText(), "succeeded"); }
+        finally { alternate.close(); }
+    }
+    @Test void historyPaginationIsBoundedAndStableForIdenticalTimestamps() throws Exception {
+        var user = users.saveAndFlush(new com.converter.entity.User("paged-history@example.test", null, "Page", "Test"));
+        var ids = new java.util.ArrayList<Long>();
+        for (int i = 0; i < 3; i++) {
+            var record = new com.converter.entity.Conversion(); record.setUser(user); record.setConverterType("test"); record.setExpiresAt(java.time.Instant.now().plusSeconds(600));
+            ids.add(conversions.saveAndFlush(record).getId());
+        }
+        jdbc.update("UPDATE conversions SET created_at = ? WHERE user_id = ?", java.sql.Timestamp.from(java.time.Instant.now()), user.getId());
+        String auth = "Bearer " + jwt.generateToken(user);
+        mvc.perform(get("/api/user/history").param("size", "2").header("Authorization", auth)).andExpect(status().isOk()).andExpect(jsonPath("$.conversions.length()").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true)).andExpect(jsonPath("$.conversions[0].id").value(ids.get(2).intValue()));
+        mvc.perform(get("/api/user/history").param("page", "1").param("size", "2").header("Authorization", auth)).andExpect(status().isOk()).andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.conversions.length()").value(1)).andExpect(jsonPath("$.conversions[0].id").value(ids.get(0).intValue()));
+        mvc.perform(get("/api/user/history").param("size", "10000").header("Authorization", auth)).andExpect(status().isBadRequest());
+    }
+    @Test void exhaustedQuotaDoesNotCreateJobOrStageAnUpload() throws Exception {
+        long before = jdbc.queryForObject("SELECT COUNT(*) FROM conversion_jobs", Long.class);
+        org.mockito.Mockito.doThrow(new com.converter.exception.RateLimitException("Daily limit reached."))
+                .when(quotas).reserve(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(2));
+        try {
+            mvc.perform(multipart("/api/jobs/file-compress").file(new MockMultipartFile("file", "quota.txt", "text/plain", "rejected".getBytes()))
+                    .param("requestId", java.util.UUID.randomUUID().toString())).andExpect(status().isTooManyRequests());
+            org.junit.jupiter.api.Assertions.assertEquals(before, jdbc.queryForObject("SELECT COUNT(*) FROM conversion_jobs", Long.class));
+        } finally {
+            org.mockito.Mockito.doNothing().when(quotas).reserve(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(2));
+        }
+    }
+    @Test void deletingCompletedHistoryInvalidatesRecoveredJobDownload() throws Exception {
+        var user = users.saveAndFlush(new com.converter.entity.User("removed-job-result@example.test", null, "Removed", "Result"));
+        String token = jwt.generateToken(user);
+        var accepted = submitJob("file-compress", java.util.UUID.randomUUID().toString(), token, "remove.txt", "remove this".getBytes());
+        String id = accepted.path("jobId").asText(); jobs.dispatch();
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() ->
+                org.junit.jupiter.api.Assertions.assertEquals("succeeded", jobs.get(id, user.getId()).status()));
+        String download = jobs.get(id, user.getId()).result().getDownloadUrl();
+        var record = conversions.findByFileId(download.substring(download.lastIndexOf('/') + 1)).orElseThrow();
+        mvc.perform(delete("/api/user/history/" + record.getId()).header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        mvc.perform(get("/api/jobs/" + id).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("expired")).andExpect(jsonPath("$.result").doesNotExist());
+    }
+    @Test void longUploadNamesKeepTheirExtensionForBackgroundConversion() throws Exception {
+        byte[] bytes;
+        try (var pdf = new org.apache.pdfbox.pdmodel.PDDocument(); var output = new java.io.ByteArrayOutputStream()) {
+            pdf.addPage(new org.apache.pdfbox.pdmodel.PDPage()); pdf.save(output); bytes = output.toByteArray();
+        }
+        var accepted = submitJob("file-compress", java.util.UUID.randomUUID().toString(), null, "a".repeat(250) + ".pdf", bytes);
+        org.junit.jupiter.api.Assertions.assertTrue(accepted.path("originalFileName").asText().endsWith(".pdf"));
+        jobs.dispatch(); var completed = awaitJob(accepted.path("jobId").asText(), "succeeded");
+        org.junit.jupiter.api.Assertions.assertTrue(completed.path("result").path("fileName").asText().endsWith(".pdf"));
     }
 
 }

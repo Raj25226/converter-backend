@@ -57,22 +57,24 @@ public class FileConversionService {
             Path normalized = workspace.path("normalized.docx");
             PdfDocxLayout.normalize(exported, normalized, settings, workspace);
             Files.move(normalized, exported, StandardCopyOption.REPLACE_EXISTING);
-            // Round-trip the output: enforce page geometry and report text extraction differences as warnings.
-            Path verification = workspace.path("verification"); Files.createDirectory(verification);
-            var verifyCommand = officeCommand(workspace);
-            verifyCommand.addAll(List.of("--convert-to", "pdf:writer_pdf_Export", "--outdir", verification.toString(), exported.toString()));
-            Path rendered = verification.resolve("input.pdf");
-            processes.run(verifyCommand, workspace, rendered, outputLimit());
-            try (var check = loadPdf(rendered, workspace)) {
-                if (check.getNumberOfPages() != pages.size()) throw new ConversionException("The PDF layout could not be preserved without changing its page count.");
-                var results = new PdfPreflight(settings, workspace).inspectPages(check);
-                for (int index = 0; index < pages.size(); index++) {
-                    var sourcePage = pages.get(index); var resultPage = results.get(index);
-                    if (Math.abs(sourcePage.width() - resultPage.width()) > 1 || Math.abs(sourcePage.height() - resultPage.height()) > 1) {
-                        throw new ConversionException("The PDF page dimensions could not be preserved reliably.");
-                    }
-                    if (!PdfTextIntegrity.containsText(sourcePage.text(), resultPage.text())) {
-                        workspace.warn("Text verification found differences after conversion. Review the DOCX for font substitutions or missing text.");
+            if (settings.getPdfVerification() == ConversionSettings.PdfVerification.DEEP) {
+                // Round-trip the output: enforce page geometry and report text extraction differences as warnings.
+                Path verification = workspace.path("verification"); Files.createDirectory(verification);
+                var verifyCommand = officeCommand(workspace);
+                verifyCommand.addAll(List.of("--convert-to", "pdf:writer_pdf_Export", "--outdir", verification.toString(), exported.toString()));
+                Path rendered = verification.resolve("input.pdf");
+                processes.run(verifyCommand, workspace, rendered, outputLimit());
+                try (var check = loadPdf(rendered, workspace)) {
+                    if (check.getNumberOfPages() != pages.size()) throw new ConversionException("The PDF layout could not be preserved without changing its page count.");
+                    var results = new PdfPreflight(settings, workspace).inspectPages(check);
+                    for (int index = 0; index < pages.size(); index++) {
+                        var sourcePage = pages.get(index); var resultPage = results.get(index);
+                        if (Math.abs(sourcePage.width() - resultPage.width()) > 1 || Math.abs(sourcePage.height() - resultPage.height()) > 1) {
+                            throw new ConversionException("The PDF page dimensions could not be preserved reliably.");
+                        }
+                        if (!PdfTextIntegrity.containsText(sourcePage.text(), resultPage.text())) {
+                            workspace.warn("Text verification found differences after conversion. Review the DOCX for font substitutions or missing text.");
+                        }
                     }
                 }
             }

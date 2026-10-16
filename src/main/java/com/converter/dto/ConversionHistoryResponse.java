@@ -19,6 +19,10 @@ public class ConversionHistoryResponse {
     private int usedToday;
     private int dailyLimit;
     private int remaining;
+    private int page;
+    private int size;
+    private boolean hasNext;
+    private boolean hasPrevious;
 
     @Data
     @Builder
@@ -36,7 +40,7 @@ public class ConversionHistoryResponse {
     }
 
     public static ConversionItem fromConversion(Conversion c, String downloadBaseUrl) {
-        boolean expired = c.getExpiresAt().isBefore(Instant.now());
+        boolean expired = c.getFileId() == null || !c.getExpiresAt().isAfter(Instant.now());
         return ConversionItem.builder()
                 .id(c.getId())
                 .converterType(c.getConverterType())

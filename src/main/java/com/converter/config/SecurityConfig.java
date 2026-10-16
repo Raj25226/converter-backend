@@ -99,7 +99,7 @@ public class SecurityConfig {
                                 "/api/auth/reset-password"
                         ).permitAll()
                         // ── Public conversion & download ─────────────────────
-                        .requestMatchers("/api/convert/**").permitAll()
+                        .requestMatchers("/api/convert/**", "/api/jobs", "/api/jobs/**").permitAll()
                         .requestMatchers("/api/download/**").permitAll()
                         // ── Public analytics ─────────────────────────────────
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()

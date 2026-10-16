@@ -33,7 +33,10 @@ public final class ConversionWorkspace implements AutoCloseable {
         if (remaining <= 0) throw new AppException("Conversion exceeded the processing time limit. Try a smaller file.", HttpStatus.GATEWAY_TIMEOUT);
         return remaining;
     }
-    public void checkDeadline() { remainingMillis(); }
+    public void checkDeadline() {
+        if (Thread.currentThread().isInterrupted()) throw new AppException("Conversion was cancelled.", HttpStatus.SERVICE_UNAVAILABLE);
+        remainingMillis();
+    }
     @Override public void close() {
         try (var paths = Files.walk(directory)) {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);

@@ -130,6 +130,50 @@ public class ConversionService {
         return doConvert(file, userId, sessionId, ip, "file-compress", fileConversionService::fileCompress);
     }
 
+    public ConverterFn converterFor(String tool) {
+        return switch (tool) {
+            case "pdf-to-word" -> fileConversionService::pdfToWord;
+            case "word-to-pdf" -> fileConversionService::wordToPdf;
+            case "pdf-to-excel" -> fileConversionService::pdfToExcel;
+            case "excel-to-pdf" -> fileConversionService::excelToPdf;
+            case "ppt-to-pdf" -> fileConversionService::pptToPdf;
+            case "jpg-to-png" -> fileConversionService::jpgToPng;
+            case "png-to-jpg" -> fileConversionService::pngToJpg;
+            case "jpg-to-webp" -> fileConversionService::jpgToWebp;
+            case "webp-to-png" -> fileConversionService::webpToPng;
+            case "heic-to-jpg" -> fileConversionService::heicToJpg;
+            case "mp4-to-mp3" -> fileConversionService::mp4ToMp3;
+            case "mp4-to-gif" -> fileConversionService::mp4ToGif;
+            case "wav-to-mp3" -> fileConversionService::wavToMp3;
+            case "zip-extract" -> fileConversionService::zipExtract;
+            case "file-compress" -> fileConversionService::fileCompress;
+            default -> throw new AppException("Unknown conversion tool.", HttpStatus.NOT_FOUND);
+        };
+    }
+    public void reserveJobQuota(Long userId, String ip) {
+        quotaService.reserve(userId, ip, userId == null ? guestDailyLimit : userDailyLimit);
+    }
+    public ConversionResponse runReservedJob(MultipartFile file, Long userId, String sessionId, String ip, String tool) {
+        return executeConversion(file, userId, sessionId, ip, tool, converterFor(tool), false);
+    }
+    public boolean isJobResultAvailable(ConversionResponse result) {
+        String id = result.getDownloadUrl().substring(result.getDownloadUrl().lastIndexOf('/') + 1);
+        if (!id.matches("[a-f0-9]{32}")) return false;
+        return conversionRepository.findByFileId(id).filter(record -> record.getExpiresAt().isAfter(Instant.now()))
+                .map(record -> Files.isRegularFile(outputPath.resolve(id + "." + org.apache.commons.io.FilenameUtils.getExtension(record.getConvertedFileName())),
+                        java.nio.file.LinkOption.NOFOLLOW_LINKS)).orElse(false);
+    }
+    public void discardJobResult(ConversionResponse result) {
+        String id = result.getDownloadUrl().substring(result.getDownloadUrl().lastIndexOf('/') + 1);
+        conversionRepository.findByFileId(id).ifPresent(record -> {
+            try {
+                String extension = org.apache.commons.io.FilenameUtils.getExtension(record.getConvertedFileName());
+                Files.deleteIfExists(outputPath.resolve(id + "." + extension));
+                conversionRepository.delete(record);
+            } catch (IOException failure) { log.warn("Could not discard cancelled job output {}", id, failure); }
+        });
+    }
+
     // ─── Core conversion orchestrator ────────────────────────────────────────
 
     public ConversionResponse doConvert(MultipartFile file,
@@ -139,6 +183,10 @@ public class ConversionService {
                                         String converterType,
                                         ConverterFn converter) {
 
+        return executeConversion(file, userId, sessionId, ip, converterType, converter, true);
+    }
+    private ConversionResponse executeConversion(MultipartFile file, Long userId, String sessionId, String ip,
+                                                 String converterType, ConverterFn converter, boolean reserveQuota) {
         log.info("Conversion request: type=[{}], user=[{}], session=[{}], ip=[{}], file=[{}], size=[{}]",
                 converterType, userId != null ? userId : "guest", sessionId, ip,
                 file != null ? file.getOriginalFilename() : "null",
@@ -155,9 +203,9 @@ public class ConversionService {
             throw new AppException("File size exceeds the " + maxFileSizeMb + "MB limit.", HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-        if (!slots.tryAcquire()) throw new AppException("Conversion workers are busy. Please try again shortly.", HttpStatus.SERVICE_UNAVAILABLE);
+        if (!slots.tryAcquire()) throw new com.converter.exception.ConversionBusyException();
         try {
-            quotaService.reserve(userId, ip, userId == null ? guestDailyLimit : userDailyLimit);
+            if (reserveQuota) reserveJobQuota(userId, ip);
 
             long startMs = System.currentTimeMillis();
 
@@ -258,19 +306,21 @@ public class ConversionService {
 
     // ─── User History ────────────────────────────────────────────────────────
 
-    public ConversionHistoryResponse getUserHistory(Long userId) {
+    public ConversionHistoryResponse getUserHistory(Long userId, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) throw new AppException("History page must be non-negative and size must be between 1 and 100.", HttpStatus.BAD_REQUEST);
         log.debug("Fetching conversion history for user=[{}]", userId);
 
         userRepository.findById(userId)
                 .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
 
-        List<Conversion> conversions = conversionRepository.findRecentByUserId(userId);
+        var conversions = conversionRepository.findByUser_Id(userId, org.springframework.data.domain.PageRequest.of(page, size,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt", "id")));
 
         Instant startOfDay = LocalDate.now(ZoneOffset.UTC)
                 .atStartOfDay(ZoneOffset.UTC).toInstant();
         long usedToday = quotaService.used(userId, null);
 
-        log.debug("User=[{}] history: {} total records, {} used today", userId, conversions.size(), usedToday);
+        log.debug("User=[{}] history: {} total records, {} used today", userId, conversions.getNumberOfElements(), usedToday);
 
         List<ConversionHistoryResponse.ConversionItem> items = conversions.stream()
                 .map(c -> ConversionHistoryResponse.fromConversion(c, downloadBaseUrl))
@@ -279,6 +329,7 @@ public class ConversionService {
         return ConversionHistoryResponse.builder()
                 .status("success")
                 .conversions(items)
+                .page(page).size(size).hasNext(conversions.hasNext()).hasPrevious(page > 0)
                 .usedToday((int) usedToday)
                 .dailyLimit(userDailyLimit)
                 .remaining(Math.max(0, userDailyLimit - (int) usedToday))

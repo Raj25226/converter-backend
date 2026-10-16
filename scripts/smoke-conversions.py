@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Exercise all 15 deployed conversion routes using fixtures exported by integration tests.
 CONVERSION_SMOKE_FIXTURES=/tmp/converter-smoke-fixtures sh mvnw verify
-python3 scripts/smoke-conversions.py http://localhost:8080 /tmp/converter-smoke-fixtures
+python3 scripts/smoke-conversions.py http://localhost:8080 /tmp/converter-smoke-fixtures [--jobs]
 Use an isolated test database and sufficient guest quota. No third-party Python packages.
 """
-import io, json, pathlib, sys, urllib.request, uuid, zipfile, gzip
+import io, json, pathlib, sys, urllib.request, uuid, zipfile, gzip, time
 base=sys.argv[1].rstrip('/')
 fixtures=pathlib.Path(sys.argv[2])
+background='--jobs' in sys.argv[3:]
 routes={
  'pdf-to-word':'text.pdf','word-to-pdf':'word.docx','pdf-to-excel':'text.pdf',
  'excel-to-pdf':'sheet.xlsx','ppt-to-pdf':'slides.pptx','jpg-to-png':'image.jpg',
@@ -17,8 +18,21 @@ for route,filename in routes.items():
  boundary='converter-smoke-'+uuid.uuid4().hex
  body=(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode()
        +(fixtures/filename).read_bytes()+f'\r\n--{boundary}--\r\n'.encode())
- request=urllib.request.Request(base+'/api/convert/'+route,data=body,headers={'Content-Type':'multipart/form-data; boundary='+boundary})
+ if background:
+  body=body[:-(len(boundary)+8)]+f'\r\n--{boundary}\r\nContent-Disposition: form-data; name="requestId"\r\n\r\n{uuid.uuid4()}\r\n--{boundary}--\r\n'.encode()
+ request=urllib.request.Request(base+('/api/jobs/' if background else '/api/convert/')+route,data=body,headers={'Content-Type':'multipart/form-data; boundary='+boundary})
  with urllib.request.urlopen(request,timeout=150) as response: data=json.load(response)
+ if background:
+  deadline=time.monotonic()+180
+  job_id=data['jobId']
+  while data['status'] in ('uploading','queued','running'):
+   assert time.monotonic()<deadline,(route,'job timeout',data)
+   time.sleep(0.2)
+   with urllib.request.urlopen(base+'/api/jobs/'+job_id,timeout=30) as response:
+    assert response.headers.get('Cache-Control')=='no-store'
+    data=json.load(response)
+  assert data['status']=='succeeded',(route,data)
+  data=data['result']
  assert data['status']=='success',(route,data)
  # Downloads go to the tested host, independently of its configured public hostname.
  identifier=data['downloadUrl'].rsplit('/',1)[-1]
@@ -40,4 +54,4 @@ for route,filename in routes.items():
  elif extension=='.gif': assert output.startswith((b'GIF87a',b'GIF89a')),route
  elif extension=='.mp3': assert mime=='audio/mpeg' and len(output)>1000,route
  print(f'PASS {route}: {len(output)} bytes, {mime}',flush=True)
-print('All 15 conversion routes passed.')
+print('All 15 background job routes passed.' if background else 'All 15 conversion routes passed.')
