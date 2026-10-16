@@ -3,6 +3,7 @@ package com.converter.service;
 import com.converter.dto.AnalyticsStatsResponse;
 import com.converter.entity.Analytics;
 import com.converter.entity.ToolStat;
+import com.converter.feature.FeatureFlag;
 import com.converter.repository.AnalyticsRepository;
 import com.converter.repository.ToolStatRepository;
 import jakarta.annotation.PostConstruct;
@@ -29,6 +30,7 @@ public class AnalyticsService {
     private final ToolStatRepository toolStatRepository;
     // ✅ Inject the writer bean — NOT a self-call, so Spring's @Transactional proxy fires correctly
     private final AnalyticsWriter analyticsWriter;
+    private final FeatureFlagService featureFlagService;
 
     /**
      * In-memory session deduplication (replaces Redis). Thread-safe. Resets on process restart —
@@ -93,6 +95,7 @@ public class AnalyticsService {
      */
     @Async
     public void trackVisit(String sessionId) {
+        if (!featureFlagService.enabled(FeatureFlag.ANALYTICS_TRACKING)) return;
         if (sessionId == null || sessionId.isBlank()) {
             log.debug("trackVisit skipped: null or blank sessionId");
             return;
@@ -119,6 +122,7 @@ public class AnalyticsService {
      */
     @Async
     public void trackConversion(String converterType) {
+        if (!featureFlagService.enabled(FeatureFlag.ANALYTICS_TRACKING)) return;
         if (converterType == null || converterType.isBlank()) {
             log.warn("trackConversion called with null/blank converterType");
             return;

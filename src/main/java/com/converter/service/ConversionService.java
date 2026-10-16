@@ -9,6 +9,7 @@ import com.converter.entity.Conversion;
 import com.converter.exception.AppException;
 import com.converter.exception.ConversionBusyException;
 import com.converter.exception.ConversionException;
+import com.converter.feature.FeatureFlag;
 import com.converter.repository.ConversionRepository;
 import com.converter.repository.UserRepository;
 import java.io.IOException;
@@ -48,6 +49,7 @@ public class ConversionService {
     private final AnalyticsService analyticsService;
     private final Path outputPath;
     private final QuotaService quotaService;
+    private final FeatureFlagService featureFlagService;
     private final Semaphore slots;
 
     @Value("${app.backend-download-url}")
@@ -73,7 +75,9 @@ public class ConversionService {
             AnalyticsService analyticsService,
             @Qualifier("outputPath") Path outputPath,
             QuotaService quotaService,
-            ConversionSettings conversionSettings) {
+            ConversionSettings conversionSettings,
+            FeatureFlagService featureFlagService) {
+        this.featureFlagService = featureFlagService;
         this.slots = new Semaphore(conversionSettings.getMaxConcurrent());
         this.quotaService = quotaService;
         this.fileConversionService = fileConversionService;
@@ -196,6 +200,14 @@ public class ConversionService {
         };
     }
 
+    public void requireConversionEnabled(String tool, boolean background) {
+        FeatureFlag conversion = FeatureFlag.fromKey("conversion-" + tool);
+        if (background)
+            featureFlagService.require(
+                    FeatureFlag.CONVERSIONS, conversion, FeatureFlag.BACKGROUND_JOBS);
+        else featureFlagService.require(FeatureFlag.CONVERSIONS, conversion);
+    }
+
     public void reserveJobQuota(Long userId, String ip) {
         quotaService.reserve(userId, ip, userId == null ? guestDailyLimit : userDailyLimit);
     }
@@ -261,6 +273,7 @@ public class ConversionService {
             String converterType,
             ConverterFn converter,
             boolean reserveQuota) {
+        requireConversionEnabled(converterType, false);
         log.info(
                 "Conversion request: type=[{}], user=[{}], session=[{}], ip=[{}], file=[{}], size=[{}]",
                 converterType,

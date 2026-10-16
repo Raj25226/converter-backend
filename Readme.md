@@ -192,3 +192,46 @@ HTTP outcome logs include method, route template, status, duration, and a genera
 request ID returned in `X-Request-ID`. Query strings, request bodies, and auth
 tokens are omitted. `LOGGING_LEVEL_COM_CONVERTER` defaults to `INFO` (`DEBUG` in
 dev); `LOGGING_PATTERN_CONSOLE` can customize the pattern.
+
+## Feature flags
+
+Migration V6 adds database overrides and an append-only change audit. V7 seeds
+all 28 flags: login, signup, Google OAuth, email verification, password reset,
+password changes, profile editing, and history are disabled; everything else is
+enabled. Existing database choices are preserved. Seeded rows have no admin actor
+(`updated_by` is null). These database values take precedence over environment
+defaults in database mode. The administrator
+page exposes switches for login, signup, Google OAuth, verification, password
+recovery, profile editing, password changes, history, analytics, downloads,
+background submissions, conversion availability, and each of the 15 converters.
+
+`FEATURE_FLAGS_SOURCE=database` (default) lets authenticated administrators change
+flags immediately through `/api/admin/features`. A stored database override wins
+over its environment default. Reset deletes that override and uses the current
+environment default again. Defaults are listed in `.env.example` and the dev YAML.
+`FEATURE_FLAGS_SOURCE=environment` ignores database overrides and rejects flag
+writes; change the environment and restart in that mode. Compose forwards these
+settings. Only the `dev` profile loads `application-dev.yml`.
+
+`GET /api/features` returns public booleans with `Cache-Control: no-store`, without
+admin IDs or audit details. Browsers refresh on focus and every 15 seconds while
+visible. Backend checks are authoritative on every new request, so developer tools,
+modified JavaScript, and direct API requests cannot enable a disabled feature.
+Management endpoints require a validated admin JWT; change requests cannot supply
+the actor ID. Changes record the server-derived admin ID and timestamp in
+`feature_flag_audit` (a null enabled value records a reset). Flags contain no secrets.
+
+Disabled actions return HTTP 503 before quota is reserved. Switching off a converter
+also prevents queued jobs for that converter from starting; running conversions may
+finish. Disabling only background submissions lets accepted jobs finish. Job status,
+cancellation, history deletion, account inspection, and admin flag management remain
+available to authorized callers. Disabling downloads blocks existing download links.
+Google sign-in also requires login; creating a new Google account additionally
+requires signup. Login changes do not revoke existing sessions. Disabling email
+verification does not mark accounts verified or bypass verification requirements.
+
+Disabling login blocks new admin sign-ins too. If an admin session is lost, recover
+by restarting with `FEATURE_FLAGS_SOURCE=environment` and `FEATURE_LOGIN=true`,
+sign in, then restore database mode and reset the login override. Feature flags
+control availability and never replace authentication, ownership, quotas, or roles.
+Deploy the backend (including V6 and V7) before the frontend.

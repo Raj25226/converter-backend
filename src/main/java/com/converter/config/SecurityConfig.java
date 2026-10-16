@@ -109,7 +109,7 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 "/api/convert/**", "/api/jobs", "/api/jobs/**")
                                         .permitAll()
-                                        .requestMatchers("/api/download/**")
+                                        .requestMatchers("/api/features", "/api/download/**")
                                         .permitAll()
                                         // ── Public analytics ─────────────────────────────────
                                         .requestMatchers("/actuator/health", "/actuator/health/**")

@@ -9,11 +9,14 @@ import com.converter.entity.Conversion;
 import com.converter.entity.EmailToken;
 import com.converter.entity.User;
 import com.converter.exception.RateLimitException;
+import com.converter.feature.FeatureFlag;
+import com.converter.feature.FeatureFlagSettings;
 import com.converter.repository.ConversionRepository;
 import com.converter.repository.EmailTokenRepository;
 import com.converter.repository.UserRepository;
 import com.converter.service.ConversionJobService;
 import com.converter.service.ConversionService;
+import com.converter.service.FeatureFlagService;
 import com.converter.service.QuotaService;
 import com.converter.util.JwtUtil;
 import java.awt.geom.Rectangle2D.Double;
@@ -88,7 +91,226 @@ import tools.jackson.databind.ObjectMapper;
         })
 @AutoConfigureMockMvc
 class ApplicationIntegrationTest {
+    @org.junit.jupiter.api.BeforeEach
+    void enableFeaturesForIntegrationFlows() {
+        // Production seed defaults are verified independently in FeatureFlagMigrationTest.
+        jdbcTemplate.update("UPDATE feature_flags SET enabled = TRUE");
+    }
+
     @Autowired ApplicationContext applicationContext;
+    @Autowired FeatureFlagService featureFlagService;
+    @Autowired FeatureFlagSettings featureFlagSettings;
+
+    private String featureAdminToken() {
+        var admin =
+                new User(
+                        "feature-admin-" + UUID.randomUUID() + "@example.test",
+                        null,
+                        "Feature",
+                        "Admin");
+        admin.setRole(User.Role.ADMIN);
+        admin = userRepository.saveAndFlush(admin);
+        return jwtUtil.generateToken(admin);
+    }
+
+    @Test
+    void featureFlagsArePublicButChangesRequireAdmin() throws Exception {
+        mvc.perform(get("/api/features"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.login").value(true));
+        mvc.perform(
+                        patch("/api/admin/features/login")
+                                .contentType("application/json")
+                                .content("{\"enabled\":false}"))
+                .andExpect(status().isUnauthorized());
+        var user =
+                userRepository.saveAndFlush(
+                        new User("flags-user@example.test", null, "Flags", "User"));
+        mvc.perform(
+                        patch("/api/admin/features/login")
+                                .header("Authorization", "Bearer " + jwtUtil.generateToken(user))
+                                .contentType("application/json")
+                                .content("{\"enabled\":false}"))
+                .andExpect(status().isForbidden());
+        String auth = "Bearer " + featureAdminToken();
+        mvc.perform(
+                        patch("/api/admin/features/unknown")
+                                .header("Authorization", auth)
+                                .contentType("application/json")
+                                .content("{\"enabled\":false}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(
+                        patch("/api/admin/features/login")
+                                .header("Authorization", auth)
+                                .contentType("application/json")
+                                .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void disabledLoginAndOauthAreEnforcedWithoutChargingQuotaAndCanBeReset() throws Exception {
+        String auth = "Bearer " + featureAdminToken();
+        try {
+            mvc.perform(
+                            patch("/api/admin/features/login")
+                                    .header("Authorization", auth)
+                                    .contentType("application/json")
+                                    .content("{\"enabled\":false}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.editable").value(true));
+            Mockito.clearInvocations(quotaService);
+            mvc.perform(post("/api/auth/login").contentType("application/json").content("{}"))
+                    .andExpect(status().isServiceUnavailable());
+            mvc.perform(post("/api/auth/google").contentType("application/json").content("{}"))
+                    .andExpect(status().isServiceUnavailable());
+            Mockito.verifyNoInteractions(quotaService);
+            mvc.perform(get("/api/admin/features").header("Authorization", auth))
+                    .andExpect(status().isOk());
+            mvc.perform(get("/api/features")).andExpect(jsonPath("$.login").value(false));
+            Assertions.assertTrue(
+                    jdbcTemplate.queryForObject(
+                                    "SELECT COUNT(*) FROM feature_flag_audit WHERE flag_key = 'login'",
+                                    Integer.class)
+                            > 0);
+            mvc.perform(delete("/api/admin/features/login").header("Authorization", auth))
+                    .andExpect(status().isOk());
+            mvc.perform(get("/api/features")).andExpect(jsonPath("$.login").value(true));
+        } finally {
+            jdbcTemplate.update("DELETE FROM feature_flags WHERE flag_key = 'login'");
+        }
+    }
+
+    @Test
+    void everyDisabledConversionRejectsBothSubmissionRoutesBeforeQuotaReservation()
+            throws Exception {
+        String[] tools = {
+            "pdf-to-word",
+            "word-to-pdf",
+            "pdf-to-excel",
+            "excel-to-pdf",
+            "ppt-to-pdf",
+            "jpg-to-png",
+            "png-to-jpg",
+            "jpg-to-webp",
+            "webp-to-png",
+            "heic-to-jpg",
+            "mp4-to-mp3",
+            "mp4-to-gif",
+            "wav-to-mp3",
+            "zip-extract",
+            "file-compress"
+        };
+        try {
+            for (String tool : tools) {
+                String key = "conversion-" + tool;
+                featureFlagService.update(key, false, 1L);
+                Mockito.clearInvocations(quotaService);
+                var file =
+                        new MockMultipartFile(
+                                "file", "test.bin", "application/octet-stream", new byte[] {1});
+                mvc.perform(multipart("/api/convert/" + tool).file(file))
+                        .andExpect(status().isServiceUnavailable());
+                mvc.perform(
+                                multipart("/api/jobs/" + tool)
+                                        .file(file)
+                                        .param("requestId", UUID.randomUUID().toString()))
+                        .andExpect(status().isServiceUnavailable());
+                Mockito.verifyNoInteractions(quotaService);
+                featureFlagService.reset(key, 1L);
+            }
+        } finally {
+            jdbcTemplate.update("DELETE FROM feature_flags WHERE flag_key LIKE 'conversion-%'");
+        }
+    }
+
+    @Test
+    void environmentModeIgnoresDatabaseOverridesAndRejectsAdminWrites() throws Exception {
+        try {
+            featureFlagService.update("signup", false, 1L);
+            featureFlagSettings.setSource(FeatureFlagSettings.Source.ENVIRONMENT);
+            Assertions.assertTrue(featureFlagService.enabled(FeatureFlag.SIGNUP));
+            mvc.perform(
+                            patch("/api/admin/features/signup")
+                                    .header("Authorization", "Bearer " + featureAdminToken())
+                                    .contentType("application/json")
+                                    .content("{\"enabled\":true}"))
+                    .andExpect(status().isConflict());
+        } finally {
+            featureFlagSettings.setSource(FeatureFlagSettings.Source.DATABASE);
+            jdbcTemplate.update("DELETE FROM feature_flags WHERE flag_key = 'signup'");
+        }
+    }
+
+    @Test
+    void accountAnalyticsHistoryAndDownloadFlagsAreEnforced() throws Exception {
+        String auth = "Bearer " + featureAdminToken();
+        String[][] cases = {
+            {"signup", "POST", "/api/auth/signup"},
+            {"google-oauth", "POST", "/api/auth/google"},
+            {"email-verification", "POST", "/api/auth/resend-verification"},
+            {"email-verification", "GET", "/api/auth/verify-email?token=fixture"},
+            {"password-reset", "POST", "/api/auth/forgot-password"},
+            {"password-reset", "POST", "/api/auth/reset-password"},
+            {"profile", "PUT", "/api/auth/profile"},
+            {"password-change", "POST", "/api/auth/change-password"},
+            {"analytics-tracking", "POST", "/api/analytics/track-visit"},
+            {"analytics-dashboard", "GET", "/api/analytics/stats"},
+            {"history", "GET", "/api/user/history"},
+            {"downloads", "GET", "/api/download/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        };
+        for (String[] item : cases) {
+            try {
+                featureFlagService.update(item[0], false, 1L);
+                var request =
+                        switch (item[1]) {
+                            case "POST" -> post(item[2]);
+                            case "PUT" -> put(item[2]);
+                            default -> get(item[2]);
+                        };
+                mvc.perform(
+                                request.header("Authorization", auth)
+                                        .contentType("application/json")
+                                        .content("{}"))
+                        .andExpect(status().isServiceUnavailable());
+            } finally {
+                featureFlagService.reset(item[0], 1L);
+            }
+        }
+    }
+
+    @Test
+    void backgroundFlagBlocksNewJobsButAllowsRecoveryAndCancellation() throws Exception {
+        var submitted =
+                submitJob(
+                        "file-compress",
+                        UUID.randomUUID().toString(),
+                        null,
+                        "flags-note.txt",
+                        "fixture".getBytes());
+        String id = submitted.path("jobId").asText();
+        try {
+            featureFlagService.update("background-jobs", false, 1L);
+            Mockito.clearInvocations(quotaService);
+            mvc.perform(
+                            multipart("/api/jobs/file-compress")
+                                    .file(
+                                            new MockMultipartFile(
+                                                    "file",
+                                                    "note.txt",
+                                                    "text/plain",
+                                                    new byte[] {1}))
+                                    .param("requestId", UUID.randomUUID().toString()))
+                    .andExpect(status().isServiceUnavailable());
+            Mockito.verifyNoInteractions(quotaService);
+            mvc.perform(get("/api/jobs/" + id)).andExpect(status().isOk());
+            mvc.perform(delete("/api/jobs/" + id))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("cancelled"));
+        } finally {
+            featureFlagService.reset("background-jobs", 1L);
+        }
+    }
 
     @Test
     void defaultInMemorySecurityUserIsNotCreated() {

@@ -4,6 +4,7 @@ import com.converter.dto.*;
 import com.converter.entity.EmailToken;
 import com.converter.entity.User;
 import com.converter.exception.AppException;
+import com.converter.feature.FeatureFlag;
 import com.converter.repository.EmailTokenRepository;
 import com.converter.repository.UserRepository;
 import com.converter.util.JwtUtil;
@@ -35,6 +36,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
     private final GoogleAuthService googleAuthService;
+    private final FeatureFlagService featureFlagService;
 
     // ─── Signup ──────────────────────────────────────────────────────────────
 
@@ -148,6 +150,7 @@ public class AuthService {
         User user = userRepository.findByEmail(email).orElse(null);
 
         if (user == null) {
+            featureFlagService.require(FeatureFlag.SIGNUP);
             user = new User();
             user.setEmail(email);
             user.setPasswordHash(null);

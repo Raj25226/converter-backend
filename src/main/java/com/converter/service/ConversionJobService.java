@@ -140,6 +140,7 @@ public class ConversionJobService {
             throw new AppException(
                     "Background conversions are unavailable.", HttpStatus.SERVICE_UNAVAILABLE);
         conversionService.converterFor(tool);
+        conversionService.requireConversionEnabled(tool, true);
         validateRequestId(requestId);
         if (file == null || file.isEmpty())
             throw new ConversionException("Upload a non-empty file to convert.");
@@ -237,6 +238,7 @@ public class ConversionJobService {
     public List<ConversionJobResponse> recent(Long userId, String tool) {
         if (userId == null) return List.of();
         conversionService.converterFor(tool);
+        conversionService.requireConversionEnabled(tool, true);
         return jdbcTemplate
                 .query(
                         "SELECT * FROM conversion_jobs WHERE user_id = ? AND tool = ? ORDER BY CASE WHEN status IN ('uploading','queued','running') THEN 0 ELSE 1 END, created_at DESC, id DESC LIMIT 20",

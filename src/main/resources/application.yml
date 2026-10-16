@@ -217,3 +217,36 @@ jobs:
   upload-timeout-seconds: ${CONVERSION_JOBS_UPLOAD_TIMEOUT_SECONDS:300}
   poll-interval-ms: ${CONVERSION_JOBS_POLL_INTERVAL_MS:1000}
   maintenance-interval-ms: ${CONVERSION_JOBS_MAINTENANCE_INTERVAL_MS:10000}
+
+# Backend-enforced availability. Database overrides win only in database mode.
+features:
+  source: ${FEATURE_FLAGS_SOURCE:database}
+  defaults:
+    login: ${FEATURE_LOGIN:true}
+    signup: ${FEATURE_SIGNUP:true}
+    google-oauth: ${FEATURE_GOOGLE_OAUTH:true}
+    email-verification: ${FEATURE_EMAIL_VERIFICATION:true}
+    password-reset: ${FEATURE_PASSWORD_RESET:true}
+    profile: ${FEATURE_PROFILE:true}
+    password-change: ${FEATURE_PASSWORD_CHANGE:true}
+    history: ${FEATURE_HISTORY:true}
+    analytics-tracking: ${FEATURE_ANALYTICS_TRACKING:true}
+    analytics-dashboard: ${FEATURE_ANALYTICS_DASHBOARD:true}
+    downloads: ${FEATURE_DOWNLOADS:true}
+    background-jobs: ${FEATURE_BACKGROUND_JOBS:true}
+    conversions: ${FEATURE_CONVERSIONS:true}
+    conversion-pdf-to-word: ${FEATURE_CONVERSION_PDF_TO_WORD:true}
+    conversion-word-to-pdf: ${FEATURE_CONVERSION_WORD_TO_PDF:true}
+    conversion-pdf-to-excel: ${FEATURE_CONVERSION_PDF_TO_EXCEL:true}
+    conversion-excel-to-pdf: ${FEATURE_CONVERSION_EXCEL_TO_PDF:true}
+    conversion-ppt-to-pdf: ${FEATURE_CONVERSION_PPT_TO_PDF:true}
+    conversion-jpg-to-png: ${FEATURE_CONVERSION_JPG_TO_PNG:true}
+    conversion-png-to-jpg: ${FEATURE_CONVERSION_PNG_TO_JPG:true}
+    conversion-jpg-to-webp: ${FEATURE_CONVERSION_JPG_TO_WEBP:true}
+    conversion-webp-to-png: ${FEATURE_CONVERSION_WEBP_TO_PNG:true}
+    conversion-heic-to-jpg: ${FEATURE_CONVERSION_HEIC_TO_JPG:true}
+    conversion-mp4-to-mp3: ${FEATURE_CONVERSION_MP4_TO_MP3:true}
+    conversion-mp4-to-gif: ${FEATURE_CONVERSION_MP4_TO_GIF:true}
+    conversion-wav-to-mp3: ${FEATURE_CONVERSION_WAV_TO_MP3:true}
+    conversion-zip-extract: ${FEATURE_CONVERSION_ZIP_EXTRACT:true}
+    conversion-file-compress: ${FEATURE_CONVERSION_FILE_COMPRESS:true}
